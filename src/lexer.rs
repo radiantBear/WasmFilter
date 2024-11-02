@@ -2,7 +2,7 @@ use std::collections::LinkedList;
 use std::fmt::Debug;
 use std::str::Chars;
 
-#[derive(Debug)]
+#[derive(Debug, Eq, PartialEq)]
 pub enum Comparator {
     Equal,
     NotEqual,
@@ -12,33 +12,16 @@ pub enum Comparator {
     GreaterThanOrEqual
 }
 
-#[derive(Debug)]
+#[derive(Debug, Eq, Ord, PartialEq, PartialOrd)]
+#[repr(u8)]
 pub enum JoinType {
-    And,
     Or,
-    Xor
+    And,
+    Xor,
+    // Pipe
 }
 
-#[derive(Debug)]
-pub enum ComparisonOrSearch {
-    Comparison(Comparison),
-    Search(Search)
-}
-
-#[derive(Debug)]
-pub struct Comparison {
-    name: String,
-    comparator: Comparator,
-    value: String
-}
-
-#[derive(Debug)]
-pub struct Search {
-    comparisons: Vec<ComparisonOrSearch>,
-    join_type: JoinType
-}
-
-#[derive(Debug)]
+#[derive(Debug, Eq, PartialEq)]
 pub enum Token {
     Name(String),
     Comparator(Comparator),
@@ -49,9 +32,6 @@ pub enum Token {
 }
 
 pub fn lex(s: String) -> LinkedList<Token> {
-    let input_len = s.chars().count();
-
-    let mut current: usize = 0;
     let mut tokens = LinkedList::new();
 
     let mut s = s.chars();
