@@ -1,5 +1,6 @@
 mod utils;
 mod lexer;
+mod parser;
 
 use wasm_bindgen::prelude::*;
 
@@ -19,18 +20,12 @@ pub fn greet() {
 }
 
 #[wasm_bindgen]
-pub fn parse_filter(filter: &str) -> *const lexer::Search {
+pub fn parse_filter(filter: &str) {
     utils::set_panic_hook();
-
-    let search: Box<Option<lexer::Search>> = Box::new(None);
 
     let lexed_filter = lexer::lex(String::from(filter));
     alert(format!("{:?}", lexed_filter).to_string().as_str());
-
-    search.as_slice().as_ptr()
-}
-
-#[wasm_bindgen]
-pub fn display(search: *const lexer::Search) {
-    alert(format!("{:?}", search).to_string().as_str());
+    
+    let parsed_filter = parser::parse(lexed_filter);
+    alert(format!("{:?}", parsed_filter).to_string().as_str());
 }
