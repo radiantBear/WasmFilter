@@ -10,15 +10,16 @@
     flex-grow: 1;
 
     font-family: monospace;
+    white-space: pre-wrap;
+    caret-color: #fff;
 }
 
 #filter-input .hl-name {
-    /*color: #569CD6;*/ /* Keyword */
     /*color: #179FFF;*/ /* Blue bracket color */
 
-    /*color: #4FC1FF;*/ /* JS Constant */
+    color: #4FC1FF; /* JS Constant */
     /*color: #9CDCFE;*/ /* JS Variable */
-    color: #4EC9B0; /* Type */
+    /*color: #4EC9B0;*/ /* Type */
 }
 #filter-input .hl-cmpr {
     color: #D4D4D4; /* Keyword.operator */
@@ -29,6 +30,9 @@
 }
 #filter-input .hl-num {
     color: #B5CEA8;
+}
+#filter-input .hl-join {
+    color: #569CD6; /* Keyword */
 }
 #filter-input .hl-comment {
     color: #6A9955;
