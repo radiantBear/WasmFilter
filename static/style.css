@@ -1,7 +1,22 @@
 #filter-input-form {
     display: flex;
+    align-items: center;
     gap: 1em;
     margin: 2em;
+}
+
+#filter-input-wrapper {
+    display: flex;
+    flex-direction: column;
+    flex-grow: 1;
+}
+
+#filter-error {
+    margin-top: -0.5em;
+    padding-top: calc(var(--bs-alert-padding-y) + 0.125em);
+    z-index: -1;
+    border-top-left-radius: 0;
+    border-top-right-radius: 0;
 }
 
 #filter-input {

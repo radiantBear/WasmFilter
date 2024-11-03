@@ -11,7 +11,10 @@
 </head>
 <body>
     <form id="filter-input-form">
-        <div id="filter-input" contenteditable="true" class="form-control"></div>
+        <div id="filter-input-wrapper">
+            <div id="filter-input" contenteditable="true" class="form-control"></div>
+            <div id="filter-error" class="alert alert-danger d-none"></div>
+        </div>
         <button type="submit" id="filter-input-submit" class="btn btn-primary btn-lg">
             Filter
         </button>
