@@ -3,6 +3,19 @@ import {BareToken} from "../pkg";
 
 wasm.greet();
 
+type Result<T, E> = { ok: true, value: T }
+                  | { ok: false, error: E};
+function Ok<T>(value: T): Result<T, never> { return { ok: true, value }}
+function Err<E>(error: E): Result<never, E> { return { ok: false, error }}
+function toResult<T extends (...args: any) => any>(fn: T, ...args: Parameters<T>): Result<ReturnType<T>, any> {
+    try {
+        return Ok( fn.call(null, ...args) );
+    }
+    catch (error) {
+        return Err( error );
+    }
+}
+
 function handleFilterSubmit(e: SubmitEvent) {
     const start = performance.now();
     e.preventDefault();
@@ -54,6 +67,7 @@ function handleFilterKeydown(e: KeyboardEvent) {
             restoreCursorPosition(inputElement, position + 1);
     }
     else if (e.key === 'Enter') {
+        e.preventDefault();     // Don't add a newline
         handleFilterSubmit(new SubmitEvent('submit'));
     }
 }
@@ -68,12 +82,30 @@ function handleFilterInput(e: Event) {
     const input = inputElement.textContent ?? '';
 
     // Tokenize input
-    const output = wasm.lex_filter(input);
+    const output = toResult(wasm.lex_filter, input);
+
+    if (!output.ok) {
+        // Display the error message to the user
+        const filter_error = document.getElementById('filter-error');
+        if (filter_error) {
+            filter_error.textContent = output.error;
+            filter_error.classList.remove('d-none');
+        }
+        return;
+    }
+    else {
+        // Ensure no error message is present
+        const filter_error = document.getElementById('filter-error');
+        if (filter_error) {
+            filter_error.textContent = '';
+            filter_error.classList.add('d-none');
+        }
+    }
 
     // Generate syntax-highlighted HTML
     const wrapper = document.createElement('span');
     let last_end = 0;
-    for (const token of output) {
+    for (const token of output.value) {
         let className = '';
         switch (token.token) {
             case BareToken.Name:
