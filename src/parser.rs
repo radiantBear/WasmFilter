@@ -164,7 +164,6 @@ fn to_postfix(mut tokens: LinkedList<TokenData>) -> LinkedList<TokenData> {
 #[cfg(test)]
 mod parser_tests {
     use super::*;
-    
     // Note: to_postfix_tests module ensures that order of operations & parentheses are handled correctly. No need to include tests for those features here.
 
     #[test]
@@ -197,13 +196,13 @@ mod parser_tests {
 
             TokenData{ token: Token::Name("test_2".to_string()), source: "test_2".to_string(), start: 0, start_line: 0, start_col: 16, end: 0, end_line: 0, end_col: 22 },
             TokenData{ token: Token::Comparator(Comparator::Equal), source: "=".to_string(), start: 0, start_line: 0, start_col: 23, end: 0, end_line: 0, end_col: 24 },
-            TokenData{ token: Token::Value(Value::String("test_2".to_string())), source: "\"test_2\"".to_string(), start: 0, start_line: 0, start_col: 25, end: 0, end_line: 0, end_col: 33 },
+            TokenData{ token: Token::Value(Value::Number(12_345.67)), source: "12,345.67".to_string(), start: 0, start_line: 0, start_col: 25, end: 0, end_line: 0, end_col: 34 },
         ]);
 
         let expected = Search {
             comparisons: LinkedList::from([
                 ComparisonOrSearch::Comparison(Comparison{ name: "test".to_string(), comparator: Comparator::Equal, value: Value::String("test".to_string()) }),
-                ComparisonOrSearch::Comparison(Comparison{ name: "test_2".to_string(), comparator: Comparator::Equal, value: Value::String("test_2".to_string()) })
+                ComparisonOrSearch::Comparison(Comparison{ name: "test_2".to_string(), comparator: Comparator::Equal, value: Value::Number(12_345.67) })
             ]),
             join_type: JoinType::Or
         };
@@ -232,7 +231,7 @@ mod parser_tests {
             
             TokenData{ token: Token::Name("test_3".to_string()), source: "test_3".to_string(), start: 0, start_line: 0, start_col: 0, end: 0, end_line: 0, end_col: 0 },
             TokenData{ token: Token::Comparator(Comparator::Equal), source: "=".to_string(), start: 0, start_line: 0, start_col: 0, end: 0, end_line: 0, end_col: 0 },
-            TokenData{ token: Token::Value(Value::String("test_3".to_string())), source: "\"test_3\"".to_string(), start: 0, start_line: 0, start_col: 0, end: 0, end_line: 0, end_col: 0 },
+            TokenData{ token: Token::Value(Value::Number(12_345.67)), source: "12,345.67".to_string(), start: 0, start_line: 0, start_col: 0, end: 0, end_line: 0, end_col: 0 },
 
             TokenData{ token: Token::JoinType(JoinType::And), source: "&".to_string(), start: 0, start_line: 0, start_col: 0, end: 0, end_line: 0, end_col: 0 },
             
@@ -245,7 +244,7 @@ mod parser_tests {
             comparisons: LinkedList::from([
                 ComparisonOrSearch::Comparison(Comparison{ name: "test".to_string(), comparator: Comparator::Equal, value: Value::String("test".to_string()) }),
                 ComparisonOrSearch::Comparison(Comparison{ name: "test_2".to_string(), comparator: Comparator::Equal, value: Value::String("test_2".to_string()) }),
-                ComparisonOrSearch::Comparison(Comparison{ name: "test_3".to_string(), comparator: Comparator::Equal, value: Value::String("test_3".to_string()) }),
+                ComparisonOrSearch::Comparison(Comparison{ name: "test_3".to_string(), comparator: Comparator::Equal, value: Value::Number(12_345.67) }),
                 ComparisonOrSearch::Comparison(Comparison{ name: "test_4".to_string(), comparator: Comparator::Equal, value: Value::String("test_4".to_string()) })
             ]),
             join_type: JoinType::And
@@ -275,7 +274,7 @@ mod parser_tests {
 
             TokenData{ token: Token::Name("test_3".to_string()), source: "test_3".to_string(), start: 0, start_line: 0, start_col: 0, end: 0, end_line: 0, end_col: 0 },
             TokenData{ token: Token::Comparator(Comparator::Equal), source: "=".to_string(), start: 0, start_line: 0, start_col: 0, end: 0, end_line: 0, end_col: 0 },
-            TokenData{ token: Token::Value(Value::String("test_3".to_string())), source: "\"test_3\"".to_string(), start: 0, start_line: 0, start_col: 0, end: 0, end_line: 0, end_col: 0 },
+            TokenData{ token: Token::Value(Value::Number(12_345.67)), source: "12,345.67".to_string(), start: 0, start_line: 0, start_col: 0, end: 0, end_line: 0, end_col: 0 },
 
             TokenData{ token: Token::JoinType(JoinType::And), source: "&".to_string(), start: 0, start_line: 0, start_col: 0, end: 0, end_line: 0, end_col: 0 },
 
@@ -295,7 +294,7 @@ mod parser_tests {
                 }),
                 ComparisonOrSearch::Search(Search {
                     comparisons: LinkedList::from([
-                        ComparisonOrSearch::Comparison(Comparison{ name: "test_3".to_string(), comparator: Comparator::Equal, value: Value::String("test_3".to_string()) }),
+                        ComparisonOrSearch::Comparison(Comparison{ name: "test_3".to_string(), comparator: Comparator::Equal, value: Value::Number(12_345.67) }),
                         ComparisonOrSearch::Comparison(Comparison{ name: "test_4".to_string(), comparator: Comparator::Equal, value: Value::String("test_4".to_string()) })
                     ]),
                     join_type: JoinType::And
@@ -328,7 +327,7 @@ mod parser_tests {
 
             TokenData{ token: Token::Name("test_3".to_string()), source: "test_3".to_string(), start: 0, start_line: 0, start_col: 0, end: 0, end_line: 0, end_col: 0 },
             TokenData{ token: Token::Comparator(Comparator::Equal), source: "=".to_string(), start: 0, start_line: 0, start_col: 0, end: 0, end_line: 0, end_col: 0 },
-            TokenData{ token: Token::Value(Value::String("test_3".to_string())), source: "\"test_3\"".to_string(), start: 0, start_line: 0, start_col: 0, end: 0, end_line: 0, end_col: 0 },
+            TokenData{ token: Token::Value(Value::Number(12_345.67)), source: "12,345.67".to_string(), start: 0, start_line: 0, start_col: 0, end: 0, end_line: 0, end_col: 0 },
 
             TokenData{ token: Token::JoinType(JoinType::And), source: "&".to_string(), start: 0, start_line: 0, start_col: 0, end: 0, end_line: 0, end_col: 0 },
 
@@ -343,7 +342,7 @@ mod parser_tests {
                 ComparisonOrSearch::Search(Search {
                     comparisons: LinkedList::from([
                         ComparisonOrSearch::Comparison(Comparison{ name: "test_2".to_string(), comparator: Comparator::Equal, value: Value::String("test_2".to_string()) }),
-                        ComparisonOrSearch::Comparison(Comparison{ name: "test_3".to_string(), comparator: Comparator::Equal, value: Value::String("test_3".to_string()) }),
+                        ComparisonOrSearch::Comparison(Comparison{ name: "test_3".to_string(), comparator: Comparator::Equal, value: Value::Number(12_345.67) }),
                         ComparisonOrSearch::Comparison(Comparison{ name: "test_4".to_string(), comparator: Comparator::Equal, value: Value::String("test_4".to_string()) })
                     ]),
                     join_type: JoinType::And
@@ -376,6 +375,21 @@ mod to_postfix_tests {
             TokenData{ token: Token::Name("test".to_string()), source: "test".to_string(), start: 0, start_line: 0, start_col: 0, end: 0, end_line: 0, end_col: 4 },
             TokenData{ token: Token::Comparator(Comparator::Equal), source: "=".to_string(), start: 0, start_line: 0, start_col: 5, end: 0, end_line: 0, end_col: 6 },
             TokenData{ token: Token::Value(Value::String("test".to_string())), source: "\"test\"".to_string(), start: 0, start_line: 0, start_col: 7, end: 0, end_line: 0, end_col: 13 }
+        ]);
+        let result = to_postfix(input);
+
+        assert_eq!(result, expected);
+        
+        let input = LinkedList::from([
+            TokenData{ token: Token::Name("test".to_string()), source: "test".to_string(), start: 0, start_line: 0, start_col: 0, end: 0, end_line: 0, end_col: 4 },
+            TokenData{ token: Token::Comparator(Comparator::Equal), source: "=".to_string(), start: 0, start_line: 0, start_col: 5, end: 0, end_line: 0, end_col: 6 },
+            TokenData{ token: Token::Value(Value::Number(12_345.67)), source: "12,345.67".to_string(), start: 0, start_line: 0, start_col: 7, end: 0, end_line: 0, end_col: 16 }
+        ]);
+
+        let expected = LinkedList::from([
+            TokenData{ token: Token::Name("test".to_string()), source: "test".to_string(), start: 0, start_line: 0, start_col: 0, end: 0, end_line: 0, end_col: 4 },
+            TokenData{ token: Token::Comparator(Comparator::Equal), source: "=".to_string(), start: 0, start_line: 0, start_col: 5, end: 0, end_line: 0, end_col: 6 },
+            TokenData{ token: Token::Value(Value::Number(12_345.67)), source: "12,345.67".to_string(), start: 0, start_line: 0, start_col: 7, end: 0, end_line: 0, end_col: 16 }
         ]);
         let result = to_postfix(input);
 
@@ -429,7 +443,7 @@ mod to_postfix_tests {
 
             TokenData{ token: Token::Name("test_3".to_string()), source: "test_3".to_string(), start: 0, start_line: 0, start_col: 0, end: 0, end_line: 0, end_col: 0 },
             TokenData{ token: Token::Comparator(Comparator::Equal), source: "=".to_string(), start: 0, start_line: 0, start_col: 0, end: 0, end_line: 0, end_col: 0 },
-            TokenData{ token: Token::Value(Value::String("test_3".to_string())), source: "\"test_3\"".to_string(), start: 0, start_line: 0, start_col: 0, end: 0, end_line: 0, end_col: 0 }
+            TokenData{ token: Token::Value(Value::Number(12_345.67)), source: "12,345.67".to_string(), start: 0, start_line: 0, start_col: 0, end: 0, end_line: 0, end_col: 0 }
         ]);
 
         let expected = LinkedList::from([
@@ -443,7 +457,7 @@ mod to_postfix_tests {
 
             TokenData{ token: Token::Name("test_3".to_string()), source: "test_3".to_string(), start: 0, start_line: 0, start_col: 0, end: 0, end_line: 0, end_col: 0 },
             TokenData{ token: Token::Comparator(Comparator::Equal), source: "=".to_string(), start: 0, start_line: 0, start_col: 0, end: 0, end_line: 0, end_col: 0 },
-            TokenData{ token: Token::Value(Value::String("test_3".to_string())), source: "\"test_3\"".to_string(), start: 0, start_line: 0, start_col: 0, end: 0, end_line: 0, end_col: 0 },
+            TokenData{ token: Token::Value(Value::Number(12_345.67)), source: "12,345.67".to_string(), start: 0, start_line: 0, start_col: 0, end: 0, end_line: 0, end_col: 0 },
 
             TokenData{ token: Token::JoinType(JoinType::And), source: "&".to_string(), start: 0, start_line: 0, start_col: 34, end: 0, end_line: 0, end_col: 35 },
             TokenData{ token: Token::JoinType(JoinType::Or), source: "|".to_string(), start: 0, start_line: 0, start_col: 14, end: 0, end_line: 0, end_col: 15 }
@@ -470,7 +484,7 @@ mod to_postfix_tests {
 
             TokenData{ token: Token::Name("test_3".to_string()), source: "test_3".to_string(), start: 0, start_line: 0, start_col: 0, end: 0, end_line: 0, end_col: 0 },
             TokenData{ token: Token::Comparator(Comparator::Equal), source: "=".to_string(), start: 0, start_line: 0, start_col: 0, end: 0, end_line: 0, end_col: 0 },
-            TokenData{ token: Token::Value(Value::String("test_3".to_string())), source: "\"test_3\"".to_string(), start: 0, start_line: 0, start_col: 0, end: 0, end_line: 0, end_col: 0 }
+            TokenData{ token: Token::Value(Value::Number(12_345.67)), source: "12,345.67".to_string(), start: 0, start_line: 0, start_col: 0, end: 0, end_line: 0, end_col: 0 }
         ]);
 
         let expected = LinkedList::from([
@@ -486,7 +500,7 @@ mod to_postfix_tests {
 
             TokenData{ token: Token::Name("test_3".to_string()), source: "test_3".to_string(), start: 0, start_line: 0, start_col: 0, end: 0, end_line: 0, end_col: 0 },
             TokenData{ token: Token::Comparator(Comparator::Equal), source: "=".to_string(), start: 0, start_line: 0, start_col: 0, end: 0, end_line: 0, end_col: 0 },
-            TokenData{ token: Token::Value(Value::String("test_3".to_string())), source: "\"test_3\"".to_string(), start: 0, start_line: 0, start_col: 0, end: 0, end_line: 0, end_col: 0 },
+            TokenData{ token: Token::Value(Value::Number(12_345.67)), source: "12,345.67".to_string(), start: 0, start_line: 0, start_col: 0, end: 0, end_line: 0, end_col: 0 },
 
             TokenData{ token: Token::JoinType(JoinType::Or), source: "|".to_string(), start: 0, start_line: 0, start_col: 34, end: 0, end_line: 0, end_col: 35 }
         ]);
@@ -512,7 +526,7 @@ mod to_postfix_tests {
 
             TokenData{ token: Token::Name("test_3".to_string()), source: "test_3".to_string(), start: 0, start_line: 0, start_col: 0, end: 0, end_line: 0, end_col: 0 },
             TokenData{ token: Token::Comparator(Comparator::Equal), source: "=".to_string(), start: 0, start_line: 0, start_col: 0, end: 0, end_line: 0, end_col: 0 },
-            TokenData{ token: Token::Value(Value::String("test_3".to_string())), source: "\"test_3\"".to_string(), start: 0, start_line: 0, start_col: 0, end: 0, end_line: 0, end_col: 0 }
+            TokenData{ token: Token::Value(Value::Number(12_345.67)), source: "12,345.67".to_string(), start: 0, start_line: 0, start_col: 0, end: 0, end_line: 0, end_col: 0 }
         ]);
 
         let expected = LinkedList::from([
@@ -528,7 +542,7 @@ mod to_postfix_tests {
 
             TokenData{ token: Token::Name("test_3".to_string()), source: "test_3".to_string(), start: 0, start_line: 0, start_col: 0, end: 0, end_line: 0, end_col: 0 },
             TokenData{ token: Token::Comparator(Comparator::Equal), source: "=".to_string(), start: 0, start_line: 0, start_col: 0, end: 0, end_line: 0, end_col: 0 },
-            TokenData{ token: Token::Value(Value::String("test_3".to_string())), source: "\"test_3\"".to_string(), start: 0, start_line: 0, start_col: 0, end: 0, end_line: 0, end_col: 0 },
+            TokenData{ token: Token::Value(Value::Number(12_345.67)), source: "12,345.67".to_string(), start: 0, start_line: 0, start_col: 0, end: 0, end_line: 0, end_col: 0 },
 
             TokenData{ token: Token::JoinType(JoinType::And), source: "&".to_string(), start: 0, start_line: 0, start_col: 34, end: 0, end_line: 0, end_col: 35 }
         ]);
@@ -554,7 +568,7 @@ mod to_postfix_tests {
 
             TokenData{ token: Token::Name("test_3".to_string()), source: "test_3".to_string(), start: 0, start_line: 0, start_col: 0, end: 0, end_line: 0, end_col: 0 },
             TokenData{ token: Token::Comparator(Comparator::Equal), source: "=".to_string(), start: 0, start_line: 0, start_col: 0, end: 0, end_line: 0, end_col: 0 },
-            TokenData{ token: Token::Value(Value::String("test_3".to_string())), source: "\"test_3\"".to_string(), start: 0, start_line: 0, start_col: 0, end: 0, end_line: 0, end_col: 0 }
+            TokenData{ token: Token::Value(Value::Number(12_345.67)), source: "12,345.67".to_string(), start: 0, start_line: 0, start_col: 0, end: 0, end_line: 0, end_col: 0 }
         ]);
 
         let expected = LinkedList::from([
@@ -568,7 +582,7 @@ mod to_postfix_tests {
 
             TokenData{ token: Token::Name("test_3".to_string()), source: "test_3".to_string(), start: 0, start_line: 0, start_col: 0, end: 0, end_line: 0, end_col: 0 },
             TokenData{ token: Token::Comparator(Comparator::Equal), source: "=".to_string(), start: 0, start_line: 0, start_col: 0, end: 0, end_line: 0, end_col: 0 },
-            TokenData{ token: Token::Value(Value::String("test_3".to_string())), source: "\"test_3\"".to_string(), start: 0, start_line: 0, start_col: 0, end: 0, end_line: 0, end_col: 0 },
+            TokenData{ token: Token::Value(Value::Number(12_345.67)), source: "12,345.67".to_string(), start: 0, start_line: 0, start_col: 0, end: 0, end_line: 0, end_col: 0 },
 
             TokenData{ token: Token::JoinType(JoinType::Xor), source: "^".to_string(), start: 0, start_line: 0, start_col: 34, end: 0, end_line: 0, end_col: 35 },
             TokenData{ token: Token::JoinType(JoinType::And), source: "&".to_string(), start: 0, start_line: 0, start_col: 14, end: 0, end_line: 0, end_col: 15 }
@@ -596,7 +610,7 @@ mod to_postfix_tests {
             
             TokenData{ token: Token::Name("test_3".to_string()), source: "test_3".to_string(), start: 0, start_line: 0, start_col: 0, end: 0, end_line: 0, end_col: 0 },
             TokenData{ token: Token::Comparator(Comparator::Equal), source: "=".to_string(), start: 0, start_line: 0, start_col: 0, end: 0, end_line: 0, end_col: 0 },
-            TokenData{ token: Token::Value(Value::String("test_3".to_string())), source: "\"test_3\"".to_string(), start: 0, start_line: 0, start_col: 0, end: 0, end_line: 0, end_col: 0 },
+            TokenData{ token: Token::Value(Value::Number(12_345.67)), source: "12,345.67".to_string(), start: 0, start_line: 0, start_col: 0, end: 0, end_line: 0, end_col: 0 },
 
             TokenData{ token: Token::CloseParen, source: ")".to_string(), start: 0, start_line: 0, start_col: 0, end: 0, end_line: 0, end_col: 0 }
         ]);
@@ -612,7 +626,7 @@ mod to_postfix_tests {
     
             TokenData{ token: Token::Name("test_3".to_string()), source: "test_3".to_string(), start: 0, start_line: 0, start_col: 0, end: 0, end_line: 0, end_col: 0 },
             TokenData{ token: Token::Comparator(Comparator::Equal), source: "=".to_string(), start: 0, start_line: 0, start_col: 0, end: 0, end_line: 0, end_col: 0 },
-            TokenData{ token: Token::Value(Value::String("test_3".to_string())), source: "\"test_3\"".to_string(), start: 0, start_line: 0, start_col: 0, end: 0, end_line: 0, end_col: 0 },
+            TokenData{ token: Token::Value(Value::Number(12_345.67)), source: "12,345.67".to_string(), start: 0, start_line: 0, start_col: 0, end: 0, end_line: 0, end_col: 0 },
 
             TokenData{ token: Token::JoinType(JoinType::Or), source: "|".to_string(), start: 0, start_line: 0, start_col: 0, end: 0, end_line: 0, end_col: 0 },
             TokenData{ token: Token::JoinType(JoinType::And), source: "&".to_string(), start: 0, start_line: 0, start_col: 14, end: 0, end_line: 0, end_col: 15 }
@@ -640,7 +654,7 @@ mod to_postfix_tests {
 
             TokenData{ token: Token::Name("test_3".to_string()), source: "test_3".to_string(), start: 0, start_line: 0, start_col: 0, end: 0, end_line: 0, end_col: 0 },
             TokenData{ token: Token::Comparator(Comparator::Equal), source: "=".to_string(), start: 0, start_line: 0, start_col: 0, end: 0, end_line: 0, end_col: 0 },
-            TokenData{ token: Token::Value(Value::String("test_3".to_string())), source: "\"test_3\"".to_string(), start: 0, start_line: 0, start_col: 0, end: 0, end_line: 0, end_col: 0 },
+            TokenData{ token: Token::Value(Value::Number(12_345.67)), source: "12,345.67".to_string(), start: 0, start_line: 0, start_col: 0, end: 0, end_line: 0, end_col: 0 },
 
             TokenData{ token: Token::CloseParen, source: ")".to_string(), start: 0, start_line: 0, start_col: 0, end: 0, end_line: 0, end_col: 0 }
         ]);
@@ -656,7 +670,7 @@ mod to_postfix_tests {
 
             TokenData{ token: Token::Name("test_3".to_string()), source: "test_3".to_string(), start: 0, start_line: 0, start_col: 0, end: 0, end_line: 0, end_col: 0 },
             TokenData{ token: Token::Comparator(Comparator::Equal), source: "=".to_string(), start: 0, start_line: 0, start_col: 0, end: 0, end_line: 0, end_col: 0 },
-            TokenData{ token: Token::Value(Value::String("test_3".to_string())), source: "\"test_3\"".to_string(), start: 0, start_line: 0, start_col: 0, end: 0, end_line: 0, end_col: 0 },
+            TokenData{ token: Token::Value(Value::Number(12_345.67)), source: "12,345.67".to_string(), start: 0, start_line: 0, start_col: 0, end: 0, end_line: 0, end_col: 0 },
 
             TokenData{ token: Token::JoinType(JoinType::And), source: "&".to_string(), start: 0, start_line: 0, start_col: 0, end: 0, end_line: 0, end_col: 0 },
             TokenData{ token: Token::JoinType(JoinType::Xor), source: "^".to_string(), start: 0, start_line: 0, start_col: 14, end: 0, end_line: 0, end_col: 15 }
@@ -684,7 +698,7 @@ mod to_postfix_tests {
             
             TokenData{ token: Token::Name("test_3".to_string()), source: "test_3".to_string(), start: 0, start_line: 0, start_col: 0, end: 0, end_line: 0, end_col: 0 },
             TokenData{ token: Token::Comparator(Comparator::Equal), source: "=".to_string(), start: 0, start_line: 0, start_col: 0, end: 0, end_line: 0, end_col: 0 },
-            TokenData{ token: Token::Value(Value::String("test_3".to_string())), source: "\"test_3\"".to_string(), start: 0, start_line: 0, start_col: 0, end: 0, end_line: 0, end_col: 0 },
+            TokenData{ token: Token::Value(Value::Number(12_345.67)), source: "12,345.67".to_string(), start: 0, start_line: 0, start_col: 0, end: 0, end_line: 0, end_col: 0 },
             
             TokenData{ token: Token::CloseParen, source: ")".to_string(), start: 0, start_line: 0, start_col: 0, end: 0, end_line: 0, end_col: 0 },
             TokenData{ token: Token::JoinType(JoinType::Or), source: "|".to_string(), start: 0, start_line: 0, start_col: 0, end: 0, end_line: 0, end_col: 0 },
@@ -722,7 +736,7 @@ mod to_postfix_tests {
 
             TokenData{ token: Token::Name("test_3".to_string()), source: "test_3".to_string(), start: 0, start_line: 0, start_col: 0, end: 0, end_line: 0, end_col: 0 },
             TokenData{ token: Token::Comparator(Comparator::Equal), source: "=".to_string(), start: 0, start_line: 0, start_col: 0, end: 0, end_line: 0, end_col: 0 },
-            TokenData{ token: Token::Value(Value::String("test_3".to_string())), source: "\"test_3\"".to_string(), start: 0, start_line: 0, start_col: 0, end: 0, end_line: 0, end_col: 0 },
+            TokenData{ token: Token::Value(Value::Number(12_345.67)), source: "12,345.67".to_string(), start: 0, start_line: 0, start_col: 0, end: 0, end_line: 0, end_col: 0 },
 
             TokenData{ token: Token::JoinType(JoinType::And), source: "&".to_string(), start: 0, start_line: 0, start_col: 0, end: 0, end_line: 0, end_col: 0 },
             TokenData{ token: Token::JoinType(JoinType::Xor), source: "^".to_string(), start: 0, start_line: 0, start_col: 14, end: 0, end_line: 0, end_col: 15 },
@@ -768,7 +782,7 @@ mod to_postfix_tests {
 
             TokenData{ token: Token::Name("test_3".to_string()), source: "test_3".to_string(), start: 0, start_line: 0, start_col: 0, end: 0, end_line: 0, end_col: 0 },
             TokenData{ token: Token::Comparator(Comparator::Equal), source: "=".to_string(), start: 0, start_line: 0, start_col: 0, end: 0, end_line: 0, end_col: 0 },
-            TokenData{ token: Token::Value(Value::String("test_3".to_string())), source: "\"test_3\"".to_string(), start: 0, start_line: 0, start_col: 0, end: 0, end_line: 0, end_col: 0 },
+            TokenData{ token: Token::Value(Value::Number(12_345.67)), source: "12,345.67".to_string(), start: 0, start_line: 0, start_col: 0, end: 0, end_line: 0, end_col: 0 },
 
             TokenData{ token: Token::CloseParen, source: ")".to_string(), start: 0, start_line: 0, start_col: 0, end: 0, end_line: 0, end_col: 0 }
         ]);
@@ -795,7 +809,7 @@ mod to_postfix_tests {
 
             TokenData{ token: Token::Name("test_3".to_string()), source: "test_3".to_string(), start: 0, start_line: 0, start_col: 0, end: 0, end_line: 0, end_col: 0 },
             TokenData{ token: Token::Comparator(Comparator::Equal), source: "=".to_string(), start: 0, start_line: 0, start_col: 0, end: 0, end_line: 0, end_col: 0 },
-            TokenData{ token: Token::Value(Value::String("test_3".to_string())), source: "\"test_3\"".to_string(), start: 0, start_line: 0, start_col: 0, end: 0, end_line: 0, end_col: 0 },
+            TokenData{ token: Token::Value(Value::Number(12_345.67)), source: "12,345.67".to_string(), start: 0, start_line: 0, start_col: 0, end: 0, end_line: 0, end_col: 0 },
         ]);
 
         to_postfix(input);
@@ -822,7 +836,7 @@ mod to_postfix_tests {
 
             TokenData{ token: Token::Name("test_3".to_string()), source: "test_3".to_string(), start: 0, start_line: 0, start_col: 0, end: 0, end_line: 0, end_col: 0 },
             TokenData{ token: Token::Comparator(Comparator::Equal), source: "=".to_string(), start: 0, start_line: 0, start_col: 0, end: 0, end_line: 0, end_col: 0 },
-            TokenData{ token: Token::Value(Value::String("test_3".to_string())), source: "\"test_3\"".to_string(), start: 0, start_line: 0, start_col: 0, end: 0, end_line: 0, end_col: 0 },
+            TokenData{ token: Token::Value(Value::Number(12_345.67)), source: "12,345.67".to_string(), start: 0, start_line: 0, start_col: 0, end: 0, end_line: 0, end_col: 0 },
         ]);
 
         to_postfix(input);
@@ -847,7 +861,7 @@ mod to_postfix_tests {
 
             TokenData{ token: Token::Name("test_3".to_string()), source: "test_3".to_string(), start: 0, start_line: 0, start_col: 0, end: 0, end_line: 0, end_col: 0 },
             TokenData{ token: Token::Comparator(Comparator::Equal), source: "=".to_string(), start: 0, start_line: 0, start_col: 0, end: 0, end_line: 0, end_col: 0 },
-            TokenData{ token: Token::Value(Value::String("test_3".to_string())), source: "\"test_3\"".to_string(), start: 0, start_line: 0, start_col: 0, end: 0, end_line: 0, end_col: 0 },
+            TokenData{ token: Token::Value(Value::Number(12_345.67)), source: "12,345.67".to_string(), start: 0, start_line: 0, start_col: 0, end: 0, end_line: 0, end_col: 0 },
 
             TokenData{ token: Token::CloseParen, source: ")".to_string(), start: 0, start_line: 0, start_col: 0, end: 0, end_line: 0, end_col: 0 }
         ]);
@@ -875,7 +889,7 @@ mod to_postfix_tests {
 
             TokenData{ token: Token::Name("test_3".to_string()), source: "test_3".to_string(), start: 0, start_line: 0, start_col: 0, end: 0, end_line: 0, end_col: 0 },
             TokenData{ token: Token::Comparator(Comparator::Equal), source: "=".to_string(), start: 0, start_line: 0, start_col: 0, end: 0, end_line: 0, end_col: 0 },
-            TokenData{ token: Token::Value(Value::String("test_3".to_string())), source: "\"test_3\"".to_string(), start: 0, start_line: 0, start_col: 0, end: 0, end_line: 0, end_col: 0 },
+            TokenData{ token: Token::Value(Value::Number(12_345.67)), source: "12,345.67".to_string(), start: 0, start_line: 0, start_col: 0, end: 0, end_line: 0, end_col: 0 },
         ]);
 
         to_postfix(input);
