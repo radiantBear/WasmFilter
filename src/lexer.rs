@@ -98,7 +98,7 @@ pub struct BareTokenData {
     pub end_col: usize,     // 0-indexed, not inclusive
 }
 
-pub fn lex(s: String) -> LinkedList<TokenData> {
+pub fn lex(s: String) -> Result<LinkedList<TokenData>, String> {
     let mut tokens = LinkedList::new();
     let mut cursor = 0usize;
     let mut line = 0usize;
@@ -110,8 +110,8 @@ pub fn lex(s: String) -> LinkedList<TokenData> {
         match c {
             '"' => tokens.push_back(lex_string(&mut s, &mut cursor, &mut line, &mut col)),
             'a'..='z' | 'A'..='Z' | '_' => tokens.push_back(lex_name(c, &mut s, &mut cursor, line, &mut col)),
-            '0'..='9' | '-' => tokens.push_back(lex_number(c, &mut s, &mut cursor, line, &mut col)),
-            '<' | '>' | '=' | '!' => tokens.push_back(lex_comparator(c, &mut s, &mut cursor, line, &mut col)),
+            '0'..='9' | '-' => tokens.push_back(lex_number(c, &mut s, &mut cursor, line, &mut col)?),
+            '<' | '>' | '=' | '!' => tokens.push_back(lex_comparator(c, &mut s, &mut cursor, line, &mut col)?),
             '(' => tokens.push_back(TokenData{
                 token: Token::OpenParen,
                 source: "(".to_string(),
@@ -164,14 +164,14 @@ pub fn lex(s: String) -> LinkedList<TokenData> {
             }),
             '\n' => { line += 1; col = 0; cursor += 1; continue },
             c if c.is_whitespace() => { },
-            c @ _ => panic!("Unexpected character {}", c)
+            c @ _ => return Err(format!("Unexpected character '{}'", c))
         }
 
         col += 1;
         cursor += 1;
     }
 
-    tokens
+    Ok(tokens)
 }
 
 pub fn lex_name(c: char, s: &mut Peekable<Chars>, cursor: &mut usize, line: usize, col: &mut usize) -> TokenData {
@@ -235,7 +235,7 @@ pub fn lex_string(s: &mut Peekable<Chars>, cursor: &mut usize, line: &mut usize,
     }
 }
 
-pub fn lex_number(c: char, s: &mut Peekable<Chars>, cursor: &mut usize, line: usize, col: &mut usize) -> TokenData {
+pub fn lex_number(c: char, s: &mut Peekable<Chars>, cursor: &mut usize, line: usize, col: &mut usize) -> Result<TokenData, String> {
     let found_decimal = false;
     let start = *cursor;
     let start_col = *col;
@@ -247,7 +247,7 @@ pub fn lex_number(c: char, s: &mut Peekable<Chars>, cursor: &mut usize, line: us
             break;
         }
         if *c == '.' && found_decimal {
-            panic!("Unexpected second decimal place");
+            return Err("Unexpected second decimal place".to_string());
         }
 
         // Allow commas for splitting large numbers, but not actually part of number
@@ -260,7 +260,7 @@ pub fn lex_number(c: char, s: &mut Peekable<Chars>, cursor: &mut usize, line: us
         *cursor += 1;
     }
 
-    TokenData {
+    Ok(TokenData {
         source: raw_string,
         token: Token::Value(Value::Number(number_string.parse::<f64>().unwrap())),
         start,
@@ -269,17 +269,17 @@ pub fn lex_number(c: char, s: &mut Peekable<Chars>, cursor: &mut usize, line: us
         end: *cursor + 1,
         end_line: line,
         end_col: *col + 1
-    }
+    })
 }
 
-pub fn lex_comparator(c: char, s: &mut Peekable<Chars>, cursor: &mut usize, line: usize, col: &mut usize) -> TokenData {
+pub fn lex_comparator(c: char, s: &mut Peekable<Chars>, cursor: &mut usize, line: usize, col: &mut usize) -> Result<TokenData, String> {
     match c {
         '>' => match s.peek() {
             Some('=') => {
                 s.next();
                 *col += 1;
                 *cursor += 1;
-                TokenData {
+                Ok(TokenData {
                     token: Token::Comparator(Comparator::GreaterThanOrEqual),
                     source: ">=".to_string(),
                     start: *cursor - 1,
@@ -288,9 +288,9 @@ pub fn lex_comparator(c: char, s: &mut Peekable<Chars>, cursor: &mut usize, line
                     end: *cursor + 1,
                     end_line: line,
                     end_col: *col + 1
-                }
+                })
             },
-            _ => TokenData {
+            _ => Ok(TokenData {
                 token: Token::Comparator(Comparator::GreaterThan),
                 source: ">".to_string(),
                 start: *cursor,
@@ -299,14 +299,14 @@ pub fn lex_comparator(c: char, s: &mut Peekable<Chars>, cursor: &mut usize, line
                 end: *cursor + 1,
                 end_line: line,
                 end_col: *col + 1
-            }
+            })
         },
         '<' => match s.peek() {
             Some('=') => {
                 s.next();
                 *col += 1;
                 *cursor += 1;
-                TokenData {
+                Ok(TokenData {
                     token: Token::Comparator(Comparator::LessThanOrEqual),
                     source: "<=".to_string(),
                     start: *cursor - 1,
@@ -315,9 +315,9 @@ pub fn lex_comparator(c: char, s: &mut Peekable<Chars>, cursor: &mut usize, line
                     end: *cursor + 1,
                     end_line: line,
                     end_col: *col + 1
-                }
+                })
             },
-            _ => TokenData {
+            _ => Ok(TokenData {
                 token: Token::Comparator(Comparator::LessThan),
                 source: "<".to_string(),
                 start: *cursor,
@@ -326,9 +326,9 @@ pub fn lex_comparator(c: char, s: &mut Peekable<Chars>, cursor: &mut usize, line
                 end: *cursor + 1,
                 end_line: line,
                 end_col: *col + 1
-            }
+            })
         },
-        '=' => TokenData {
+        '=' => Ok(TokenData {
             token: Token::Comparator(Comparator::Equal),
             source: "=".to_string(),
             start: *cursor,
@@ -337,13 +337,13 @@ pub fn lex_comparator(c: char, s: &mut Peekable<Chars>, cursor: &mut usize, line
             end: *cursor + 1,
             end_line: line,
             end_col: *col + 1
-        },
+        }),
         '!' => match s.peek() {
             Some('=') => {
                 s.next();
                 *col += 1;
                 *cursor += 1;
-                TokenData {
+                Ok(TokenData {
                     token: Token::Comparator(Comparator::NotEqual),
                     source: "!=".to_string(),
                     start: *cursor - 1,
@@ -352,10 +352,10 @@ pub fn lex_comparator(c: char, s: &mut Peekable<Chars>, cursor: &mut usize, line
                     end: *cursor + 1,
                     end_line: line,
                     end_col: *col + 1
-                }
+                })
             },
-            None => panic!("Unexpected end of filter after '='"),
-            Some(c) => panic!("Unexpected character '{}' (expected `=` to make `!=`)", c)
+            None => Err("Unexpected end of filter after '!'".to_string()),
+            Some(c) => Err(format!("Unexpected character '{}' (expected `=` to make `!=`)", c))
         },
         _ => panic!("Passed invalid character `{}` to lex_comparator()", c)
     }
@@ -381,7 +381,7 @@ mod lexer_tests {
         }]);
         let result = lex(input);
 
-        assert_eq!(result, expected);
+        assert_eq!(result.unwrap(), expected);
     }
 
     #[test]
@@ -400,7 +400,7 @@ mod lexer_tests {
         }]);
         let result = lex(input);
 
-        assert_eq!(result, expected);
+        assert_eq!(result.unwrap(), expected);
     }
 
     #[test]
@@ -419,7 +419,7 @@ mod lexer_tests {
         }]);
         let result = lex(input);
 
-        assert_eq!(result, expected);
+        assert_eq!(result.unwrap(), expected);
     }
 
     #[test]
@@ -438,7 +438,7 @@ mod lexer_tests {
         }]);
         let result = lex(input);
 
-        assert_eq!(result, expected);
+        assert_eq!(result.unwrap(), expected);
     }
 
     #[test]
@@ -457,7 +457,7 @@ mod lexer_tests {
         }]);
         let result = lex(input);
 
-        assert_eq!(result, expected);
+        assert_eq!(result.unwrap(), expected);
     }
 
     #[test]
@@ -476,7 +476,7 @@ mod lexer_tests {
         }]);
         let result = lex(input);
 
-        assert_eq!(result, expected);
+        assert_eq!(result.unwrap(), expected);
     }
 
     #[test]
@@ -495,7 +495,7 @@ mod lexer_tests {
         }]);
         let result = lex(input);
 
-        assert_eq!(result, expected);
+        assert_eq!(result.unwrap(), expected);
     }
 
     #[test]
@@ -514,7 +514,7 @@ mod lexer_tests {
         }]);
         let result = lex(input);
 
-        assert_eq!(result, expected);
+        assert_eq!(result.unwrap(), expected);
     }
 
     #[test]
@@ -533,7 +533,7 @@ mod lexer_tests {
         }]);
         let result = lex(input);
 
-        assert_eq!(result, expected);
+        assert_eq!(result.unwrap(), expected);
     }
 
     #[test]
@@ -552,7 +552,7 @@ mod lexer_tests {
         }]);
         let result = lex(input);
 
-        assert_eq!(result, expected);
+        assert_eq!(result.unwrap(), expected);
     }
 
     #[test]
@@ -571,7 +571,7 @@ mod lexer_tests {
         }]);
         let result = lex(input);
 
-        assert_eq!(result, expected);
+        assert_eq!(result.unwrap(), expected);
     }
 
     #[test]
@@ -590,7 +590,7 @@ mod lexer_tests {
         }]);
         let result = lex(input);
 
-        assert_eq!(result, expected);
+        assert_eq!(result.unwrap(), expected);
     }
     
     #[test]
@@ -609,7 +609,7 @@ mod lexer_tests {
         }]);
         let result = lex(input);
 
-        assert_eq!(result, expected);
+        assert_eq!(result.unwrap(), expected);
     }
     #[test]
     pub fn lexes_positive_comma_separated_real_number() {
@@ -627,7 +627,7 @@ mod lexer_tests {
         }]);
         let result = lex(input);
 
-        assert_eq!(result, expected);
+        assert_eq!(result.unwrap(), expected);
     }
 
     #[test]
@@ -646,7 +646,7 @@ mod lexer_tests {
         }]);
         let result = lex(input);
 
-        assert_eq!(result, expected);
+        assert_eq!(result.unwrap(), expected);
     }
 
     #[test]
@@ -665,7 +665,7 @@ mod lexer_tests {
         }]);
         let result = lex(input);
 
-        assert_eq!(result, expected);
+        assert_eq!(result.unwrap(), expected);
     }
 
     #[test]
@@ -706,7 +706,7 @@ mod lexer_tests {
         ]);
         let result = lex(input);
 
-        assert_eq!(result, expected);
+        assert_eq!(result.unwrap(), expected);
     }
 
     #[test]
@@ -747,7 +747,7 @@ mod lexer_tests {
         ]);
         let result = lex(input);
 
-        assert_eq!(result, expected);
+        assert_eq!(result.unwrap(), expected);
     }
 
     #[test]
@@ -788,7 +788,7 @@ mod lexer_tests {
         ]);
         let result = lex(input);
 
-        assert_eq!(result, expected);
+        assert_eq!(result.unwrap(), expected);
     }
 
     #[test]
@@ -869,7 +869,7 @@ mod lexer_tests {
         ]);
         let result = lex(input);
 
-        assert_eq!(result, expected);
+        assert_eq!(result.unwrap(), expected);
     }
 
     #[test]
@@ -950,30 +950,33 @@ mod lexer_tests {
         ]);
         let result = lex(input);
 
-        assert_eq!(result, expected);
+        assert_eq!(result.unwrap(), expected);
     }
 
     #[test]
-    #[should_panic(expected = "Unexpected character")]
-    pub fn panics_on_unexpected_character() {
+    pub fn errors_on_unexpected_character() {
         let input = "test @ \"test\"".to_string();
+        
+        let result = lex(input);
 
-        lex(input);
+        assert!(result.is_err());
     }
 
     #[test]
-    #[should_panic(expected = "character '")]
-    pub fn panics_on_incomplete_not_equal() {
+    pub fn errors_on_incomplete_not_equal() {
         let input = "test ! \"test\"".to_string();
+        
+        let result = lex(input);
 
-        lex(input);
+        assert!(result.is_err());
     }
 
     #[test]
-    #[should_panic(expected = "Unexpected end")]
-    pub fn panics_on_incomplete_not_equal_2() {
+    pub fn errors_on_incomplete_not_equal_2() {
         let input = "test !".to_string();
+        
+        let result = lex(input);
 
-        lex(input);
+        assert!(result.is_err());
     }
 }
