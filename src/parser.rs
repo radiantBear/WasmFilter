@@ -10,15 +10,15 @@ pub enum Literal {
 
 #[derive(Debug, Eq, PartialEq)]
 pub struct Comparison {
-    name: String,
-    comparator: Comparator,
-    value: Literal
+    pub name: String,
+    pub comparator: Comparator,
+    pub value: Literal
 }
 
 #[derive(Debug, Eq, PartialEq)]
 pub struct Search {
-    comparisons: LinkedList<ComparisonOrSearch>,
-    join_type: JoinType
+    pub comparisons: LinkedList<ComparisonOrSearch>,
+    pub join_type: JoinType
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -329,7 +329,7 @@ mod to_postfix_tests {
         let expected = LinkedList::from([ Token::Name("test".to_string()), Token::Comparator(Comparator::Equal), Token::Value("test".to_string()) ]);
         let result = to_postfix(input);
 
-        assert_eq!(expected, result);
+        assert_eq!(result, expected);
     }
 
     #[test]
@@ -347,7 +347,7 @@ mod to_postfix_tests {
         ]);
         let result = to_postfix(input);
 
-        assert_eq!(expected, result);
+        assert_eq!(result, expected);
     }
 
     #[test]
@@ -368,9 +368,8 @@ mod to_postfix_tests {
             Token::JoinType(JoinType::Or)
         ]);
         let result = to_postfix(input);
-        println!("{:?}", result);
 
-        assert_eq!(expected, result);
+        assert_eq!(result, expected);
     }
 
     #[test]
@@ -391,9 +390,8 @@ mod to_postfix_tests {
             Token::JoinType(JoinType::Or)
         ]);
         let result = to_postfix(input);
-        println!("{:?}", result);
 
-        assert_eq!(expected, result);
+        assert_eq!(result, expected);
     }
 
     #[test]
@@ -415,7 +413,7 @@ mod to_postfix_tests {
         ]);
         let result = to_postfix(input);
 
-        assert_eq!(expected, result);
+        assert_eq!(result, expected);
     }
 
     #[test]
@@ -437,7 +435,7 @@ mod to_postfix_tests {
         ]);
         let result = to_postfix(input);
 
-        assert_eq!(expected, result);
+        assert_eq!(result, expected);
     }
 
     #[test]
@@ -461,7 +459,7 @@ mod to_postfix_tests {
         ]);
         let result = to_postfix(input);
 
-        assert_eq!(expected, result);
+        assert_eq!(result, expected);
     }
 
     #[test]
@@ -485,7 +483,7 @@ mod to_postfix_tests {
         ]);
         let result = to_postfix(input);
 
-        assert_eq!(expected, result);
+        assert_eq!(result, expected);
     }
 
     #[test]
@@ -525,7 +523,7 @@ mod to_postfix_tests {
         ]);
         let result = to_postfix(input);
 
-        assert_eq!(expected, result);
+        assert_eq!(result, expected);
     }
 
     #[test]
