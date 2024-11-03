@@ -14,6 +14,12 @@ pub enum Comparator {
     GreaterThanOrEqual
 }
 
+#[derive(Debug, PartialEq)]
+pub enum Value {
+    Number(f64),
+    String(String)
+}
+
 #[derive(Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub enum JoinType {
     Or,
@@ -22,17 +28,17 @@ pub enum JoinType {
     // Pipe
 }
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, PartialEq)]
 pub enum Token {
     Name(String),
     Comparator(Comparator),
-    Value(String),
+    Value(Value),
     JoinType(JoinType),
     OpenParen,
     CloseParen
 }
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, PartialEq)]
 pub struct TokenData {
     pub token: Token,
     pub source: String,
@@ -98,9 +104,10 @@ pub fn lex(s: String) -> LinkedList<TokenData> {
     let mut s = s.peekable();
     while let Some(c) = s.next() {
         match c {
-            '"' => tokens.push_back(lex_value(&mut s, &mut cursor, &mut line, &mut col)),
-            'a'..='z' | 'A'..='Z' | '_' => tokens.push_back(lex_name(c, &mut s, &mut cursor, &line, &mut col)),
-            '<' | '>' | '=' | '!' => tokens.push_back(lex_comparator(c, &mut s, &mut cursor, &line, &mut col)),
+            '"' => tokens.push_back(lex_string(&mut s, &mut cursor, &mut line, &mut col)),
+            'a'..='z' | 'A'..='Z' | '_' => tokens.push_back(lex_name(c, &mut s, &mut cursor, line, &mut col)),
+            '0'..='9' | '-' => tokens.push_back(lex_number(c, &mut s, &mut cursor, line, &mut col)),
+            '<' | '>' | '=' | '!' => tokens.push_back(lex_comparator(c, &mut s, &mut cursor, line, &mut col)),
             '(' => tokens.push_back(TokenData{
                 token: Token::OpenParen,
                 source: "(".to_string(),
@@ -163,7 +170,7 @@ pub fn lex(s: String) -> LinkedList<TokenData> {
     tokens
 }
 
-pub fn lex_name(c: char, s: &mut Peekable<Chars>, cursor: &mut usize, line: &usize, col: &mut usize) -> TokenData {
+pub fn lex_name(c: char, s: &mut Peekable<Chars>, cursor: &mut usize, line: usize, col: &mut usize) -> TokenData {
     let start = *cursor;
     let start_col = *col;
     let mut name = String::from(c);
@@ -183,16 +190,15 @@ pub fn lex_name(c: char, s: &mut Peekable<Chars>, cursor: &mut usize, line: &usi
         source: name.clone(),
         token: Token::Name(name),
         start,
-        start_line: *line,
+        start_line: line,
         start_col,
         end: *cursor + 1,
-        end_line: *line,
+        end_line: line,
         end_col: *col + 1
     }
-
 }
 
-pub fn lex_value(s: &mut Peekable<Chars>, cursor: &mut usize, line: &mut usize, col: &mut usize) -> TokenData {
+pub fn lex_string(s: &mut Peekable<Chars>, cursor: &mut usize, line: &mut usize, col: &mut usize) -> TokenData {
     let start = *cursor;
     let start_line = *line;
     let start_col = *col;
@@ -215,7 +221,7 @@ pub fn lex_value(s: &mut Peekable<Chars>, cursor: &mut usize, line: &mut usize, 
 
     TokenData {
         source: format!("\"{}\"", value),
-        token: Token::Value(value),
+        token: Token::Value(Value::String(value)),
         start,
         start_line,
         start_col,
@@ -225,7 +231,44 @@ pub fn lex_value(s: &mut Peekable<Chars>, cursor: &mut usize, line: &mut usize, 
     }
 }
 
-pub fn lex_comparator(c: char, s: &mut Peekable<Chars>, cursor: &mut usize, line: &usize, col: &mut usize) -> TokenData {
+pub fn lex_number(c: char, s: &mut Peekable<Chars>, cursor: &mut usize, line: usize, col: &mut usize) -> TokenData {
+    let found_decimal = false;
+    let start = *cursor;
+    let start_col = *col;
+    let mut number_string = String::from(c);
+    let mut raw_string = String::from(c);
+
+    while let Some(c) = s.peek() {
+        if !c.is_numeric() && *c != ',' && *c != '.' {
+            break;
+        }
+        if *c == '.' && found_decimal {
+            panic!("Unexpected second decimal place");
+        }
+
+        // Allow commas for splitting large numbers, but not actually part of number
+        if *c != ',' {
+            number_string.push(*c);
+        }
+        raw_string.push(*c);
+        s.next();
+        *col += 1;
+        *cursor += 1;
+    }
+
+    TokenData {
+        source: raw_string,
+        token: Token::Value(Value::Number(number_string.parse::<f64>().unwrap())),
+        start,
+        start_line: line,
+        start_col,
+        end: *cursor + 1,
+        end_line: line,
+        end_col: *col + 1
+    }
+}
+
+pub fn lex_comparator(c: char, s: &mut Peekable<Chars>, cursor: &mut usize, line: usize, col: &mut usize) -> TokenData {
     match c {
         '>' => match s.peek() {
             Some('=') => {
@@ -236,10 +279,10 @@ pub fn lex_comparator(c: char, s: &mut Peekable<Chars>, cursor: &mut usize, line
                     token: Token::Comparator(Comparator::GreaterThanOrEqual),
                     source: ">=".to_string(),
                     start: *cursor - 1,
-                    start_line: *line,
+                    start_line: line,
                     start_col: *col - 1,
                     end: *cursor + 1,
-                    end_line: *line,
+                    end_line: line,
                     end_col: *col + 1
                 }
             },
@@ -247,10 +290,10 @@ pub fn lex_comparator(c: char, s: &mut Peekable<Chars>, cursor: &mut usize, line
                 token: Token::Comparator(Comparator::GreaterThan),
                 source: ">".to_string(),
                 start: *cursor,
-                start_line: *line,
+                start_line: line,
                 start_col: *col,
                 end: *cursor + 1,
-                end_line: *line,
+                end_line: line,
                 end_col: *col + 1
             }
         },
@@ -263,10 +306,10 @@ pub fn lex_comparator(c: char, s: &mut Peekable<Chars>, cursor: &mut usize, line
                     token: Token::Comparator(Comparator::LessThanOrEqual),
                     source: "<=".to_string(),
                     start: *cursor - 1,
-                    start_line: *line,
+                    start_line: line,
                     start_col: *col - 1,
                     end: *cursor + 1,
-                    end_line: *line,
+                    end_line: line,
                     end_col: *col + 1
                 }
             },
@@ -274,10 +317,10 @@ pub fn lex_comparator(c: char, s: &mut Peekable<Chars>, cursor: &mut usize, line
                 token: Token::Comparator(Comparator::LessThan),
                 source: "<".to_string(),
                 start: *cursor,
-                start_line: *line,
+                start_line: line,
                 start_col: *col,
                 end: *cursor + 1,
-                end_line: *line,
+                end_line: line,
                 end_col: *col + 1
             }
         },
@@ -285,10 +328,10 @@ pub fn lex_comparator(c: char, s: &mut Peekable<Chars>, cursor: &mut usize, line
             token: Token::Comparator(Comparator::Equal),
             source: "=".to_string(),
             start: *cursor,
-            start_line: *line,
+            start_line: line,
             start_col: *col,
             end: *cursor + 1,
-            end_line: *line,
+            end_line: line,
             end_col: *col + 1
         },
         '!' => match s.peek() {
@@ -300,10 +343,10 @@ pub fn lex_comparator(c: char, s: &mut Peekable<Chars>, cursor: &mut usize, line
                     token: Token::Comparator(Comparator::NotEqual),
                     source: "!=".to_string(),
                     start: *cursor - 1,
-                    start_line: *line,
+                    start_line: line,
                     start_col: *col - 1,
                     end: *cursor + 1,
-                    end_line: *line,
+                    end_line: line,
                     end_col: *col + 1
                 }
             },
@@ -509,11 +552,11 @@ mod lexer_tests {
     }
 
     #[test]
-    pub fn lexes_string_value() {
+    pub fn lexes_string() {
         let input = "\"test\"".to_string();
 
         let expected = LinkedList::from([TokenData {
-            token: Token::Value("test".to_string()),
+            token: Token::Value(Value::String("test".to_string())),
             source: "\"test\"".to_string(),
             start: 0,
             start_line: 0,
@@ -521,6 +564,62 @@ mod lexer_tests {
             end: 6,
             end_line: 0,
             end_col: 6
+        }]);
+        let result = lex(input);
+
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    pub fn lexes_positive_integer() {
+        let input = "109".to_string();
+
+        let expected = LinkedList::from([TokenData {
+            token: Token::Value(Value::Number(109.)),
+            source: "109".to_string(),
+            start: 0,
+            start_line: 0,
+            start_col: 0,
+            end: 3,
+            end_line: 0,
+            end_col: 3
+        }]);
+        let result = lex(input);
+
+        assert_eq!(result, expected);
+    }
+    
+    #[test]
+    pub fn lexes_positive_real_number() {
+        let input = "109.55".to_string();
+
+        let expected = LinkedList::from([TokenData {
+            token: Token::Value(Value::Number(109.55)),
+            source: "109.55".to_string(),
+            start: 0,
+            start_line: 0,
+            start_col: 0,
+            end: 6,
+            end_line: 0,
+            end_col: 6
+        }]);
+        let result = lex(input);
+
+        assert_eq!(result, expected);
+    }
+    #[test]
+    pub fn lexes_positive_comma_separated_real_number() {
+        let input = "62,109.55".to_string();
+
+        let expected = LinkedList::from([TokenData {
+            token: Token::Value(Value::Number(62_109.55)),
+            source: "62,109.55".to_string(),
+            start: 0,
+            start_line: 0,
+            start_col: 0,
+            end: 9,
+            end_line: 0,
+            end_col: 9
         }]);
         let result = lex(input);
 
@@ -591,7 +690,7 @@ mod lexer_tests {
                 end_col: 6
             },
             TokenData {
-                token: Token::Value("test".to_string()),
+                token: Token::Value(Value::String("test".to_string())),
                 source: "\"test\"".to_string(),
                 start: 7,
                 start_line: 0,
@@ -632,7 +731,7 @@ mod lexer_tests {
                 end_col: 5
             },
             TokenData {
-                token: Token::Value("test".to_string()),
+                token: Token::Value(Value::String("test".to_string())),
                 source: "\"test\"".to_string(),
                 start: 5,
                 start_line: 0,
@@ -673,7 +772,7 @@ mod lexer_tests {
                 end_col: 6
             },
             TokenData {
-                token: Token::Value("test".to_string()),
+                token: Token::Value(Value::String("test".to_string())),
                 source: "\"test\"".to_string(),
                 start: 7,
                 start_line: 1,
@@ -714,7 +813,7 @@ mod lexer_tests {
                 end_col: 6
             },
             TokenData {
-                token: Token::Value("test".to_string()),
+                token: Token::Value(Value::String("test".to_string())),
                 source: "\"test\"".to_string(),
                 start: 7,
                 start_line: 0,
@@ -754,7 +853,7 @@ mod lexer_tests {
                 end_col: 26
             },
             TokenData {
-                token: Token::Value("test_2".to_string()),
+                token: Token::Value(Value::String("test_2".to_string())),
                 source: "\"test_2\"".to_string(),
                 start: 26,
                 start_line: 0,
@@ -795,7 +894,7 @@ mod lexer_tests {
                 end_col: 6
             },
             TokenData {
-                token: Token::Value("test".to_string()),
+                token: Token::Value(Value::String("test".to_string())),
                 source: "\"test\"".to_string(),
                 start: 7,
                 start_line: 0,
@@ -835,7 +934,7 @@ mod lexer_tests {
                 end_col: 12
             },
             TokenData {
-                token: Token::Value("test_2".to_string()),
+                token: Token::Value(Value::String("test_2".to_string())),
                 source: "\"test_2\"".to_string(),
                 start: 26,
                 start_line: 1,
