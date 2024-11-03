@@ -1,0 +1,44 @@
+#filter-input-form {
+    display: flex;
+    gap: 1em;
+    margin: 2em;
+}
+
+#filter-input {
+    padding: 1em;
+    border-radius: 0.5em;
+    flex-grow: 1;
+
+    font-family: monospace;
+}
+
+#filter-input .hl-name {
+    /*color: #569CD6;*/ /* Keyword */
+    /*color: #179FFF;*/ /* Blue bracket color */
+
+    /*color: #4FC1FF;*/ /* JS Constant */
+    /*color: #9CDCFE;*/ /* JS Variable */
+    color: #4EC9B0; /* Type */
+}
+#filter-input .hl-cmpr {
+    color: #D4D4D4; /* Keyword.operator */
+}
+#filter-input .hl-str {
+    /*color: #D7BA7D;*/ /* Escape char */
+    color: #CE9178; /* String */
+}
+#filter-input .hl-num {
+    color: #B5CEA8;
+}
+#filter-input .hl-comment {
+    color: #6A9955;
+}
+#filter-input .hl-fn {
+    color: #DCDCAA;
+}
+#filter-input .hl-regex {
+    color: #D16969;
+}
+#filter-input .hl-invalid {
+    color: #F44747;
+}
