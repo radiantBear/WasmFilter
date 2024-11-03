@@ -20,12 +20,19 @@ pub fn greet() {
 }
 
 #[wasm_bindgen]
+pub fn lex_filter(filter: &str) -> Vec<lexer::BareTokenData> {
+    utils::set_panic_hook();
+
+    lexer::lex(String::from(filter)).iter().map(|token| token.to_bare()).collect()
+}
+
+#[wasm_bindgen]
 pub fn parse_filter(filter: &str) {
     utils::set_panic_hook();
 
     let lexed_filter = lexer::lex(String::from(filter));
-    alert(format!("{:?}", lexed_filter).to_string().as_str());
+    // alert(format!("{:?}", lexed_filter).to_string().as_str());
     
-    let parsed_filter = parser::parse(lexed_filter);
-    alert(format!("{:?}", parsed_filter).to_string().as_str());
+    let _parsed_filter = parser::parse(lexed_filter);
+    // alert(format!("{:?}", parsed_filter).to_string().as_str());
 }
