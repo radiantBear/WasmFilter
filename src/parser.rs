@@ -1,27 +1,20 @@
 use std::collections::LinkedList;
 use crate::lexer::{Comparator, JoinType, Token, TokenData, Value};
 
-#[derive(Debug, Eq, PartialEq)]
-pub enum Literal {
-    // Number(f64),
-    String(String),
-    // Bool(bool)
-}
-
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, PartialEq)]
 pub struct Comparison {
     pub name: String,
     pub comparator: Comparator,
-    pub value: Literal
+    pub value: Value
 }
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, PartialEq)]
 pub struct Search {
     pub comparisons: LinkedList<ComparisonOrSearch>,
     pub join_type: JoinType
 }
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, PartialEq)]
 pub enum ComparisonOrSearch {
     Comparison(Comparison),
     Search(Search)
@@ -62,14 +55,14 @@ fn _parse(tokens: &mut LinkedList<TokenData>) -> Result<Option<ComparisonOrSearc
             Ok(Some(ComparisonOrSearch::Search(search)))
         }
 
-        Token::Value(Value::String(value)) => {
+        Token::Value(value) => {
             let Token::Comparator(comparator) = tokens.pop_back().unwrap().token else { panic!("Expected comparator") };
             let Token::Name(name) = tokens.pop_back().unwrap().token else { panic!("Expected name") };
 
             Ok(Some(ComparisonOrSearch::Comparison(Comparison {
                 name,
                 comparator,
-                value: Literal::String(value)
+                value
             })))
         }
 
@@ -183,7 +176,7 @@ mod parser_tests {
         ]);
 
         let expected = LinkedList::from([ ComparisonOrSearch::Comparison(Comparison{
-            name: "test".to_string(), comparator: Comparator::Equal, value: Literal::String("test".to_string())
+            name: "test".to_string(), comparator: Comparator::Equal, value: Value::String("test".to_string())
         })]);
         let result = parse(input);
 
@@ -209,8 +202,8 @@ mod parser_tests {
 
         let expected = Search {
             comparisons: LinkedList::from([
-                ComparisonOrSearch::Comparison(Comparison{ name: "test".to_string(), comparator: Comparator::Equal, value: Literal::String("test".to_string()) }),
-                ComparisonOrSearch::Comparison(Comparison{ name: "test_2".to_string(), comparator: Comparator::Equal, value: Literal::String("test_2".to_string()) })
+                ComparisonOrSearch::Comparison(Comparison{ name: "test".to_string(), comparator: Comparator::Equal, value: Value::String("test".to_string()) }),
+                ComparisonOrSearch::Comparison(Comparison{ name: "test_2".to_string(), comparator: Comparator::Equal, value: Value::String("test_2".to_string()) })
             ]),
             join_type: JoinType::Or
         };
@@ -250,10 +243,10 @@ mod parser_tests {
 
         let expected = Search {
             comparisons: LinkedList::from([
-                ComparisonOrSearch::Comparison(Comparison{ name: "test".to_string(), comparator: Comparator::Equal, value: Literal::String("test".to_string()) }),
-                ComparisonOrSearch::Comparison(Comparison{ name: "test_2".to_string(), comparator: Comparator::Equal, value: Literal::String("test_2".to_string()) }),
-                ComparisonOrSearch::Comparison(Comparison{ name: "test_3".to_string(), comparator: Comparator::Equal, value: Literal::String("test_3".to_string()) }),
-                ComparisonOrSearch::Comparison(Comparison{ name: "test_4".to_string(), comparator: Comparator::Equal, value: Literal::String("test_4".to_string()) })
+                ComparisonOrSearch::Comparison(Comparison{ name: "test".to_string(), comparator: Comparator::Equal, value: Value::String("test".to_string()) }),
+                ComparisonOrSearch::Comparison(Comparison{ name: "test_2".to_string(), comparator: Comparator::Equal, value: Value::String("test_2".to_string()) }),
+                ComparisonOrSearch::Comparison(Comparison{ name: "test_3".to_string(), comparator: Comparator::Equal, value: Value::String("test_3".to_string()) }),
+                ComparisonOrSearch::Comparison(Comparison{ name: "test_4".to_string(), comparator: Comparator::Equal, value: Value::String("test_4".to_string()) })
             ]),
             join_type: JoinType::And
         };
@@ -295,15 +288,15 @@ mod parser_tests {
             comparisons: LinkedList::from([
                 ComparisonOrSearch::Search(Search {
                     comparisons: LinkedList::from([
-                        ComparisonOrSearch::Comparison(Comparison{ name: "test".to_string(), comparator: Comparator::Equal, value: Literal::String("test".to_string()) }),
-                        ComparisonOrSearch::Comparison(Comparison{ name: "test_2".to_string(), comparator: Comparator::Equal, value: Literal::String("test_2".to_string()) })
+                        ComparisonOrSearch::Comparison(Comparison{ name: "test".to_string(), comparator: Comparator::Equal, value: Value::String("test".to_string()) }),
+                        ComparisonOrSearch::Comparison(Comparison{ name: "test_2".to_string(), comparator: Comparator::Equal, value: Value::String("test_2".to_string()) })
                     ]),
                     join_type: JoinType::And
                 }),
                 ComparisonOrSearch::Search(Search {
                     comparisons: LinkedList::from([
-                        ComparisonOrSearch::Comparison(Comparison{ name: "test_3".to_string(), comparator: Comparator::Equal, value: Literal::String("test_3".to_string()) }),
-                        ComparisonOrSearch::Comparison(Comparison{ name: "test_4".to_string(), comparator: Comparator::Equal, value: Literal::String("test_4".to_string()) })
+                        ComparisonOrSearch::Comparison(Comparison{ name: "test_3".to_string(), comparator: Comparator::Equal, value: Value::String("test_3".to_string()) }),
+                        ComparisonOrSearch::Comparison(Comparison{ name: "test_4".to_string(), comparator: Comparator::Equal, value: Value::String("test_4".to_string()) })
                     ]),
                     join_type: JoinType::And
                 })
@@ -346,12 +339,12 @@ mod parser_tests {
 
         let expected = Search {
             comparisons: LinkedList::from([
-                ComparisonOrSearch::Comparison(Comparison{ name: "test".to_string(), comparator: Comparator::Equal, value: Literal::String("test".to_string()) }),
+                ComparisonOrSearch::Comparison(Comparison{ name: "test".to_string(), comparator: Comparator::Equal, value: Value::String("test".to_string()) }),
                 ComparisonOrSearch::Search(Search {
                     comparisons: LinkedList::from([
-                        ComparisonOrSearch::Comparison(Comparison{ name: "test_2".to_string(), comparator: Comparator::Equal, value: Literal::String("test_2".to_string()) }),
-                        ComparisonOrSearch::Comparison(Comparison{ name: "test_3".to_string(), comparator: Comparator::Equal, value: Literal::String("test_3".to_string()) }),
-                        ComparisonOrSearch::Comparison(Comparison{ name: "test_4".to_string(), comparator: Comparator::Equal, value: Literal::String("test_4".to_string()) })
+                        ComparisonOrSearch::Comparison(Comparison{ name: "test_2".to_string(), comparator: Comparator::Equal, value: Value::String("test_2".to_string()) }),
+                        ComparisonOrSearch::Comparison(Comparison{ name: "test_3".to_string(), comparator: Comparator::Equal, value: Value::String("test_3".to_string()) }),
+                        ComparisonOrSearch::Comparison(Comparison{ name: "test_4".to_string(), comparator: Comparator::Equal, value: Value::String("test_4".to_string()) })
                     ]),
                     join_type: JoinType::And
                 })
