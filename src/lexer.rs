@@ -58,9 +58,12 @@ impl TokenData {
 
             Token::Comparator(_) =>
                 BareTokenData{ token: BareToken::Comparator, start: self.start, start_line: self.start_line, start_col: self.start_col, end: self.end, end_line: self.end_line, end_col: self.end_col },
+            
+            Token::Value(Value::String(_)) =>
+                BareTokenData{ token: BareToken::String, start: self.start, start_line: self.start_line, start_col: self.start_col, end: self.end, end_line: self.end_line, end_col: self.end_col },
 
-            Token::Value(_) =>
-                BareTokenData{ token: BareToken::Value, start: self.start, start_line: self.start_line, start_col: self.start_col, end: self.end, end_line: self.end_line, end_col: self.end_col },
+            Token::Value(Value::Number(_)) =>
+                BareTokenData{ token: BareToken::Number, start: self.start, start_line: self.start_line, start_col: self.start_col, end: self.end, end_line: self.end_line, end_col: self.end_col },
 
             Token::JoinType(_) =>
                 BareTokenData{ token: BareToken::JoinType, start: self.start, start_line: self.start_line, start_col: self.start_col, end: self.end, end_line: self.end_line, end_col: self.end_col },
@@ -77,7 +80,8 @@ impl TokenData {
 pub enum BareToken {
     Name,
     Comparator,
-    Value,
+    String,
+    Number,
     JoinType,
     Paren
 }
@@ -748,7 +752,7 @@ mod lexer_tests {
 
     #[test]
     pub fn lexes_comparison_with_newline() {
-        let input = "test =\n\"test\"".to_string();
+        let input = "test =\n10".to_string();
 
         let expected = LinkedList::from([
             TokenData {
@@ -772,14 +776,14 @@ mod lexer_tests {
                 end_col: 6
             },
             TokenData {
-                token: Token::Value(Value::String("test".to_string())),
-                source: "\"test\"".to_string(),
+                token: Token::Value(Value::Number(10.)),
+                source: "10".to_string(),
                 start: 7,
                 start_line: 1,
                 start_col: 0,
-                end: 13,
+                end: 9,
                 end_line: 1,
-                end_col: 6
+                end_col: 2
             },
         ]);
         let result = lex(input);
@@ -789,7 +793,7 @@ mod lexer_tests {
 
     #[test]
     pub fn lexes_joined_comparisons() {
-        let input = "test = \"test\" | test_2  !=\"test_2\"".to_string();
+        let input = "test = 10,000 | test_2  !=\"test_2\"".to_string();
 
         let expected = LinkedList::from([
             TokenData {
@@ -813,8 +817,8 @@ mod lexer_tests {
                 end_col: 6
             },
             TokenData {
-                token: Token::Value(Value::String("test".to_string())),
-                source: "\"test\"".to_string(),
+                token: Token::Value(Value::Number(10_000.)),
+                source: "10,000".to_string(),
                 start: 7,
                 start_line: 0,
                 start_col: 7,
