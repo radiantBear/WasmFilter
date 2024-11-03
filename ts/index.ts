@@ -1,20 +1,16 @@
 import * as wasm from "../pkg";
-import {BareToken} from "../pkg";
+import { BareToken } from "../pkg";
+import { toResult } from "./result";
+import { saveCursorPosition, restoreCursorPosition } from "./cursor";
 
-wasm.greet();
+document?.getElementById('filter-input-form')
+    ?.addEventListener('submit', handleFilterSubmit);
 
-type Result<T, E> = { ok: true, value: T }
-                  | { ok: false, error: E};
-function Ok<T>(value: T): Result<T, never> { return { ok: true, value }}
-function Err<E>(error: E): Result<never, E> { return { ok: false, error }}
-function toResult<T extends (...args: any) => any>(fn: T, ...args: Parameters<T>): Result<ReturnType<T>, any> {
-    try {
-        return Ok( fn.call(null, ...args) );
-    }
-    catch (error) {
-        return Err( error );
-    }
-}
+document?.getElementById('filter-input')
+    ?.addEventListener('keydown', handleFilterKeydown);
+
+document.getElementById('filter-input')
+    ?.addEventListener('input', handleFilterInput);
 
 function handleFilterSubmit(e: SubmitEvent) {
     const start = performance.now();
@@ -144,62 +140,4 @@ function handleFilterInput(e: Event) {
     // Replace the input with the highlighted version
     inputElement.innerHTML = wrapper.innerHTML;
     restoreCursorPosition(inputElement, position);
-}
-
-document?.getElementById('filter-input-form')
-    ?.addEventListener('submit', handleFilterSubmit);
-
-document?.getElementById('filter-input')
-    ?.addEventListener('keydown', handleFilterKeydown);
-
-document.getElementById('filter-input')
-    ?.addEventListener('input', handleFilterInput);
-
-function saveCursorPosition(element: HTMLElement | null): number | null {
-    const selection = window.getSelection();
-    if (!selection || selection.rangeCount === 0 || !element) return null;
-
-    const range = selection.getRangeAt(0);
-    const preCursorRange = range.cloneRange();
-    preCursorRange.selectNodeContents(element);
-    preCursorRange.setEnd(range.startContainer, range.startOffset);
-
-    return preCursorRange.toString().length;  // Character offset
-}
-
-function restoreCursorPosition(element: HTMLElement | null, cursorPosition: number | null) {
-    if (element === null || cursorPosition === null) return;
-
-    const selection = window.getSelection();
-    if (!selection) return;
-
-    let chars = cursorPosition;
-    const range = document.createRange();
-
-    // Find where to set the cursor within `element`'s nested contents
-    function setCursorToPosition(node: any) {
-        if (chars === 0) return;
-
-        if (node.nodeType === Node.TEXT_NODE) {
-            const textLength = node.textContent?.length || 0;
-            if (textLength >= chars) {
-                range.setStart(node, chars);
-                chars = 0;
-            } else {
-                chars -= textLength;
-            }
-        } else {
-            for (const child of node.childNodes) {
-                setCursorToPosition(child);
-                if (chars === 0) break;
-            }
-        }
-    }
-
-    setCursorToPosition(element);
-    // Set to be single cursor, not highlighted selection
-    range.collapse(true);
-
-    selection.removeAllRanges();
-    selection.addRange(range);
 }
