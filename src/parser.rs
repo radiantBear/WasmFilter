@@ -1,5 +1,5 @@
 use std::collections::LinkedList;
-use crate::lexer::{Comparator, JoinType, Token};
+use crate::lexer::{Comparator, JoinType, Token, TokenData};
 
 #[derive(Debug, Eq, PartialEq)]
 pub enum Literal {
@@ -27,7 +27,7 @@ pub enum ComparisonOrSearch {
     Search(Search)
 }
 
-pub fn parse(tokens: LinkedList<Token>) -> Result<Search, String> {
+pub fn parse(tokens: LinkedList<TokenData>) -> Result<Search, String> {
     let mut tokens = to_postfix(tokens);
 
     if let Some(comparison_or_search) = _parse(&mut tokens)? {
@@ -41,12 +41,12 @@ pub fn parse(tokens: LinkedList<Token>) -> Result<Search, String> {
     }
 }
 
-fn _parse(tokens: &mut LinkedList<Token>) -> Result<Option<ComparisonOrSearch>, String> {
+fn _parse(tokens: &mut LinkedList<TokenData>) -> Result<Option<ComparisonOrSearch>, String> {
     if tokens.is_empty() {
         return Ok(None);
     }
 
-    match tokens.pop_back().unwrap() {
+    match tokens.pop_back().unwrap().token {
         Token::JoinType(join_type) => {
             let right_tree = _parse(tokens)?;
             let left_tree = _parse(tokens)?;
@@ -63,8 +63,8 @@ fn _parse(tokens: &mut LinkedList<Token>) -> Result<Option<ComparisonOrSearch>, 
         }
 
         Token::Value(value) => {
-            let Token::Comparator(comparator) = tokens.pop_back().unwrap() else { panic!("Expected comparator") };
-            let Token::Name(name) = tokens.pop_back().unwrap() else { panic!("Expected name") };
+            let Token::Comparator(comparator) = tokens.pop_back().unwrap().token else { panic!("Expected comparator") };
+            let Token::Name(name) = tokens.pop_back().unwrap().token else { panic!("Expected name") };
 
             Ok(Some(ComparisonOrSearch::Comparison(Comparison {
                 name,
@@ -93,13 +93,8 @@ fn merge_subtree(search: &mut Search, subtree: Option<ComparisonOrSearch>) {
     }
 }
 
-#[derive(Debug, Eq, PartialEq)]
-enum PostfixToken {
-    Operator(JoinType),
-    OpenParen
-}
 
-fn to_postfix(mut tokens: LinkedList<Token>) -> LinkedList<Token> {
+fn to_postfix(mut tokens: LinkedList<TokenData>) -> LinkedList<TokenData> {
     let mut last_was_join = false;
     let mut postfix = LinkedList::new();
     let mut operator_stack = LinkedList::new();
@@ -107,12 +102,12 @@ fn to_postfix(mut tokens: LinkedList<Token>) -> LinkedList<Token> {
     while !tokens.is_empty() {
         let token = tokens.pop_front().unwrap();
 
-        match token {
+        match &token.token {
             Token::OpenParen => {
                 if !last_was_join {
                     panic!("Expected operator but found open parentheses");
                 }
-                operator_stack.push_front(PostfixToken::OpenParen);
+                operator_stack.push_front(token);
             },
             Token::CloseParen => {
                 if last_was_join {
@@ -121,39 +116,39 @@ fn to_postfix(mut tokens: LinkedList<Token>) -> LinkedList<Token> {
 
                 loop {
                     let Some(operator) = operator_stack.pop_front() else {
-                        panic!("Unopened parentheses was closed");
+                        panic!("Close parentheses was found without a preceding open parentheses");
                     };
-                    match operator {
-                        PostfixToken::Operator(operator) => { postfix.push_back(Token::JoinType(operator)) },
-                        PostfixToken::OpenParen => break
+                    match &operator.token {
+                        Token::JoinType(_) => { postfix.push_back(operator) },
+                        Token::OpenParen => break,
+                        _ => panic!("Invalid token {:?} found in operator stack", operator) 
                     }
                 }
             },
             Token::JoinType(join_type) => {
                 last_was_join = true;
                 while let Some(operator) = operator_stack.front() {
-                    match operator {
-                        PostfixToken::Operator(operator) => {
-                            if operator < &join_type {
+                    match &operator.token {
+                        Token::JoinType(operator) => {
+                            if operator < join_type {
                                 break;
                             }
                             // Now know that the operator at the stack's top is higher precedence than the new operator, meaning we want to move
                             // it to `postfix`, so we can now safely remove it from `operator_stack` instead of just using `.front()`. Also
                             // needed to actually let us perform a move into the `postfix` LinkedList.
-                            let PostfixToken::Operator(operator) = operator_stack.pop_front().unwrap() else {
-                                panic!("Impossible: operator_stack.front() and operator_stack.pop_front() returned different values")
-                            };
-                            postfix.push_back(Token::JoinType(operator));
+                            let operator = operator_stack.pop_front().unwrap();
+                            postfix.push_back(operator);
                         }
-                        PostfixToken::OpenParen => {
+                        Token::OpenParen => {
                             // Everything inside parentheses should have higher precedence than the stuff outside
                             break;
-                        }
+                        },
+                        _ => panic!("Invalid token {:?} found in operator stack", operator)
                     }
                 }
-                operator_stack.push_front(PostfixToken::Operator(join_type));
+                operator_stack.push_front(token);
             },
-            token @ _ => {
+            _ => {
                 last_was_join = false;
                 postfix.push_back(token);
             }
@@ -162,9 +157,10 @@ fn to_postfix(mut tokens: LinkedList<Token>) -> LinkedList<Token> {
 
     while !operator_stack.is_empty() {
         let next_op = operator_stack.pop_front().unwrap();
-        match next_op {
-            PostfixToken::Operator(join_type) => postfix.push_back(Token::JoinType(join_type)),
-            PostfixToken::OpenParen => panic!("Unclosed parentheses!"),
+        match &next_op.token {
+            Token::JoinType(_) => postfix.push_back(next_op),
+            Token::OpenParen => panic!("Unclosed parentheses!"),
+            _ => panic!("Invalid token {:?} found in operator stack", next_op)
         }
     }
 
@@ -180,7 +176,11 @@ mod parser_tests {
 
     #[test]
     fn parses_single_comparison() {
-        let input = LinkedList::from([ Token::Name("test".to_string()), Token::Comparator(Comparator::Equal), Token::Value("test".to_string()) ]);
+        let input = LinkedList::from([ 
+            TokenData{ token: Token::Name("test".to_string()), source: "test".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 4 },
+            TokenData{ token: Token::Comparator(Comparator::Equal), source: "=".to_string(), start_line: 0, start_col: 5, end_line: 0, end_col: 6 },
+            TokenData{ token: Token::Value("test".to_string()), source: "\"test\"".to_string(), start_line: 0, start_col: 7, end_line: 0, end_col: 13 }
+        ]);
 
         let expected = LinkedList::from([ ComparisonOrSearch::Comparison(Comparison{
             name: "test".to_string(), comparator: Comparator::Equal, value: Literal::String("test".to_string())
@@ -196,9 +196,15 @@ mod parser_tests {
     #[test]
     fn parses_single_join() {
         let input = LinkedList::from([
-            Token::Name("test".to_string()), Token::Comparator(Comparator::Equal), Token::Value("test".to_string()),
-            Token::JoinType(JoinType::Or),
-            Token::Name("test_2".to_string()), Token::Comparator(Comparator::Equal), Token::Value("test_2".to_string())
+            TokenData{ token: Token::Name("test".to_string()), source: "test".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 4 },
+            TokenData{ token: Token::Comparator(Comparator::Equal), source: "=".to_string(), start_line: 0, start_col: 5, end_line: 0, end_col: 6 },
+            TokenData{ token: Token::Value("test".to_string()), source: "\"test\"".to_string(), start_line: 0, start_col: 7, end_line: 0, end_col: 13 },
+
+            TokenData{ token: Token::JoinType(JoinType::Or), source: "|".to_string(), start_line: 0, start_col: 14, end_line: 0, end_col: 15 },
+
+            TokenData{ token: Token::Name("test_2".to_string()), source: "test_2".to_string(), start_line: 0, start_col: 16, end_line: 0, end_col: 22 },
+            TokenData{ token: Token::Comparator(Comparator::Equal), source: "=".to_string(), start_line: 0, start_col: 23, end_line: 0, end_col: 24 },
+            TokenData{ token: Token::Value("test_2".to_string()), source: "\"test_2\"".to_string(), start_line: 0, start_col: 25, end_line: 0, end_col: 33 },
         ]);
 
         let expected = Search {
@@ -215,16 +221,31 @@ mod parser_tests {
         let result = result.unwrap();
         assert_eq!(result, expected);
     }
+    
     #[test]
     fn combines_repeated_joins() {
         let input = LinkedList::from([
-            Token::Name("test".to_string()), Token::Comparator(Comparator::Equal), Token::Value("test".to_string()),
-            Token::JoinType(JoinType::And),
-            Token::Name("test_2".to_string()), Token::Comparator(Comparator::Equal), Token::Value("test_2".to_string()),
-            Token::JoinType(JoinType::And),
-            Token::Name("test_3".to_string()), Token::Comparator(Comparator::Equal), Token::Value("test_3".to_string()),
-            Token::JoinType(JoinType::And),
-            Token::Name("test_4".to_string()), Token::Comparator(Comparator::Equal), Token::Value("test_4".to_string())
+            TokenData{ token: Token::Name("test".to_string()), source: "test".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 4 },
+            TokenData{ token: Token::Comparator(Comparator::Equal), source: "=".to_string(), start_line: 0, start_col: 5, end_line: 0, end_col: 6 },
+            TokenData{ token: Token::Value("test".to_string()), source: "\"test\"".to_string(), start_line: 0, start_col: 7, end_line: 0, end_col: 13 },
+
+            TokenData{ token: Token::JoinType(JoinType::And), source: "&".to_string(), start_line: 0, start_col: 14, end_line: 0, end_col: 15 },
+
+            TokenData{ token: Token::Name("test_2".to_string()), source: "test_2".to_string(), start_line: 0, start_col: 16, end_line: 0, end_col: 22 },
+            TokenData{ token: Token::Comparator(Comparator::Equal), source: "=".to_string(), start_line: 0, start_col: 23, end_line: 0, end_col: 24 },
+            TokenData{ token: Token::Value("test_2".to_string()), source: "\"test_2\"".to_string(), start_line: 0, start_col: 25, end_line: 0, end_col: 33 },
+
+            TokenData{ token: Token::JoinType(JoinType::And), source: "&".to_string(), start_line: 0, start_col: 34, end_line: 0, end_col: 35 },
+            
+            TokenData{ token: Token::Name("test_3".to_string()), source: "test_3".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+            TokenData{ token: Token::Comparator(Comparator::Equal), source: "=".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+            TokenData{ token: Token::Value("test_3".to_string()), source: "\"test_3\"".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+
+            TokenData{ token: Token::JoinType(JoinType::And), source: "&".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+            
+            TokenData{ token: Token::Name("test_4".to_string()), source: "test_4".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+            TokenData{ token: Token::Comparator(Comparator::Equal), source: "=".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+            TokenData{ token: Token::Value("test_4".to_string()), source: "\"test_4\"".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 }
         ]);
 
         let expected = Search {
@@ -247,13 +268,27 @@ mod parser_tests {
     #[test]
     fn parses_balanced_nested_join() {
         let input = LinkedList::from([
-            Token::Name("test".to_string()), Token::Comparator(Comparator::Equal), Token::Value("test".to_string()),
-            Token::JoinType(JoinType::And),
-            Token::Name("test_2".to_string()), Token::Comparator(Comparator::Equal), Token::Value("test_2".to_string()),
-            Token::JoinType(JoinType::Or),
-            Token::Name("test_3".to_string()), Token::Comparator(Comparator::Equal), Token::Value("test_3".to_string()),
-            Token::JoinType(JoinType::And),
-            Token::Name("test_4".to_string()), Token::Comparator(Comparator::Equal), Token::Value("test_4".to_string())
+            TokenData{ token: Token::Name("test".to_string()), source: "test".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 4 },
+            TokenData{ token: Token::Comparator(Comparator::Equal), source: "=".to_string(), start_line: 0, start_col: 5, end_line: 0, end_col: 6 },
+            TokenData{ token: Token::Value("test".to_string()), source: "\"test\"".to_string(), start_line: 0, start_col: 7, end_line: 0, end_col: 13 },
+
+            TokenData{ token: Token::JoinType(JoinType::And), source: "&".to_string(), start_line: 0, start_col: 14, end_line: 0, end_col: 15 },
+
+            TokenData{ token: Token::Name("test_2".to_string()), source: "test_2".to_string(), start_line: 0, start_col: 16, end_line: 0, end_col: 22 },
+            TokenData{ token: Token::Comparator(Comparator::Equal), source: "=".to_string(), start_line: 0, start_col: 23, end_line: 0, end_col: 24 },
+            TokenData{ token: Token::Value("test_2".to_string()), source: "\"test_2\"".to_string(), start_line: 0, start_col: 25, end_line: 0, end_col: 33 },
+
+            TokenData{ token: Token::JoinType(JoinType::Or), source: "|".to_string(), start_line: 0, start_col: 34, end_line: 0, end_col: 35 },
+
+            TokenData{ token: Token::Name("test_3".to_string()), source: "test_3".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+            TokenData{ token: Token::Comparator(Comparator::Equal), source: "=".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+            TokenData{ token: Token::Value("test_3".to_string()), source: "\"test_3\"".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+
+            TokenData{ token: Token::JoinType(JoinType::And), source: "&".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+
+            TokenData{ token: Token::Name("test_4".to_string()), source: "test_4".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+            TokenData{ token: Token::Comparator(Comparator::Equal), source: "=".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+            TokenData{ token: Token::Value("test_4".to_string()), source: "\"test_4\"".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 }
         ]);
 
         let expected = Search {
@@ -286,13 +321,27 @@ mod parser_tests {
     #[test]
     fn parses_imbalanced_nested_join() {
         let input = LinkedList::from([
-            Token::Name("test".to_string()), Token::Comparator(Comparator::Equal), Token::Value("test".to_string()),
-            Token::JoinType(JoinType::Or),
-            Token::Name("test_2".to_string()), Token::Comparator(Comparator::Equal), Token::Value("test_2".to_string()),
-            Token::JoinType(JoinType::And),
-            Token::Name("test_3".to_string()), Token::Comparator(Comparator::Equal), Token::Value("test_3".to_string()),
-            Token::JoinType(JoinType::And),
-            Token::Name("test_4".to_string()), Token::Comparator(Comparator::Equal), Token::Value("test_4".to_string())
+            TokenData{ token: Token::Name("test".to_string()), source: "test".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 4 },
+            TokenData{ token: Token::Comparator(Comparator::Equal), source: "=".to_string(), start_line: 0, start_col: 5, end_line: 0, end_col: 6 },
+            TokenData{ token: Token::Value("test".to_string()), source: "\"test\"".to_string(), start_line: 0, start_col: 7, end_line: 0, end_col: 13 },
+
+            TokenData{ token: Token::JoinType(JoinType::Or), source: "|".to_string(), start_line: 0, start_col: 14, end_line: 0, end_col: 15 },
+
+            TokenData{ token: Token::Name("test_2".to_string()), source: "test_2".to_string(), start_line: 0, start_col: 16, end_line: 0, end_col: 22 },
+            TokenData{ token: Token::Comparator(Comparator::Equal), source: "=".to_string(), start_line: 0, start_col: 23, end_line: 0, end_col: 24 },
+            TokenData{ token: Token::Value("test_2".to_string()), source: "\"test_2\"".to_string(), start_line: 0, start_col: 25, end_line: 0, end_col: 33 },
+
+            TokenData{ token: Token::JoinType(JoinType::And), source: "&".to_string(), start_line: 0, start_col: 34, end_line: 0, end_col: 35 },
+
+            TokenData{ token: Token::Name("test_3".to_string()), source: "test_3".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+            TokenData{ token: Token::Comparator(Comparator::Equal), source: "=".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+            TokenData{ token: Token::Value("test_3".to_string()), source: "\"test_3\"".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+
+            TokenData{ token: Token::JoinType(JoinType::And), source: "&".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+
+            TokenData{ token: Token::Name("test_4".to_string()), source: "test_4".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+            TokenData{ token: Token::Comparator(Comparator::Equal), source: "=".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+            TokenData{ token: Token::Value("test_4".to_string()), source: "\"test_4\"".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 }
         ]);
 
         let expected = Search {
@@ -324,9 +373,17 @@ mod to_postfix_tests {
 
     #[test]
     fn leaves_comparisons_alone() {
-        let input = LinkedList::from([ Token::Name("test".to_string()), Token::Comparator(Comparator::Equal), Token::Value("test".to_string()) ]);
+        let input = LinkedList::from([
+            TokenData{ token: Token::Name("test".to_string()), source: "test".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 4 },
+            TokenData{ token: Token::Comparator(Comparator::Equal), source: "=".to_string(), start_line: 0, start_col: 5, end_line: 0, end_col: 6 },
+            TokenData{ token: Token::Value("test".to_string()), source: "\"test\"".to_string(), start_line: 0, start_col: 7, end_line: 0, end_col: 13 }
+        ]);
 
-        let expected = LinkedList::from([ Token::Name("test".to_string()), Token::Comparator(Comparator::Equal), Token::Value("test".to_string()) ]);
+        let expected = LinkedList::from([
+            TokenData{ token: Token::Name("test".to_string()), source: "test".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 4 },
+            TokenData{ token: Token::Comparator(Comparator::Equal), source: "=".to_string(), start_line: 0, start_col: 5, end_line: 0, end_col: 6 },
+            TokenData{ token: Token::Value("test".to_string()), source: "\"test\"".to_string(), start_line: 0, start_col: 7, end_line: 0, end_col: 13 }
+        ]);
         let result = to_postfix(input);
 
         assert_eq!(result, expected);
@@ -335,15 +392,27 @@ mod to_postfix_tests {
     #[test]
     fn moves_single_join_type_to_end() {
         let input = LinkedList::from([
-            Token::Name("test".to_string()), Token::Comparator(Comparator::Equal), Token::Value("test".to_string()),
-            Token::JoinType(JoinType::Or),
-            Token::Name("test_2".to_string()), Token::Comparator(Comparator::GreaterThan), Token::Value("test_2".to_string()),
+            TokenData{ token: Token::Name("test".to_string()), source: "test".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 4 },
+            TokenData{ token: Token::Comparator(Comparator::Equal), source: "=".to_string(), start_line: 0, start_col: 5, end_line: 0, end_col: 6 },
+            TokenData{ token: Token::Value("test".to_string()), source: "\"test\"".to_string(), start_line: 0, start_col: 7, end_line: 0, end_col: 13 },
+
+            TokenData{ token: Token::JoinType(JoinType::Or), source: "|".to_string(), start_line: 0, start_col: 14, end_line: 0, end_col: 15 },
+
+            TokenData{ token: Token::Name("test_2".to_string()), source: "test_2".to_string(), start_line: 0, start_col: 16, end_line: 0, end_col: 22 },
+            TokenData{ token: Token::Comparator(Comparator::Equal), source: "=".to_string(), start_line: 0, start_col: 23, end_line: 0, end_col: 24 },
+            TokenData{ token: Token::Value("test_2".to_string()), source: "\"test_2\"".to_string(), start_line: 0, start_col: 25, end_line: 0, end_col: 33 },
         ]);
 
         let expected = LinkedList::from([
-            Token::Name("test".to_string()), Token::Comparator(Comparator::Equal), Token::Value("test".to_string()),
-            Token::Name("test_2".to_string()), Token::Comparator(Comparator::GreaterThan), Token::Value("test_2".to_string()),
-            Token::JoinType(JoinType::Or)
+            TokenData{ token: Token::Name("test".to_string()), source: "test".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 4 },
+            TokenData{ token: Token::Comparator(Comparator::Equal), source: "=".to_string(), start_line: 0, start_col: 5, end_line: 0, end_col: 6 },
+            TokenData{ token: Token::Value("test".to_string()), source: "\"test\"".to_string(), start_line: 0, start_col: 7, end_line: 0, end_col: 13 },
+
+            TokenData{ token: Token::Name("test_2".to_string()), source: "test_2".to_string(), start_line: 0, start_col: 16, end_line: 0, end_col: 22 },
+            TokenData{ token: Token::Comparator(Comparator::Equal), source: "=".to_string(), start_line: 0, start_col: 23, end_line: 0, end_col: 24 },
+            TokenData{ token: Token::Value("test_2".to_string()), source: "\"test_2\"".to_string(), start_line: 0, start_col: 25, end_line: 0, end_col: 33 },
+
+            TokenData{ token: Token::JoinType(JoinType::Or), source: "|".to_string(), start_line: 0, start_col: 14, end_line: 0, end_col: 15 },
         ]);
         let result = to_postfix(input);
 
@@ -353,19 +422,38 @@ mod to_postfix_tests {
     #[test]
     fn gives_and_precedence_over_or() {
         let input = LinkedList::from([
-            Token::Name("test".to_string()), Token::Comparator(Comparator::Equal), Token::Value("test".to_string()),
-            Token::JoinType(JoinType::Or),
-            Token::Name("test_2".to_string()), Token::Comparator(Comparator::GreaterThan), Token::Value("test_2".to_string()),
-            Token::JoinType(JoinType::And),
-            Token::Name("test_3".to_string()), Token::Comparator(Comparator::GreaterThan), Token::Value("test_3".to_string())
+            TokenData{ token: Token::Name("test".to_string()), source: "test".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 4 },
+            TokenData{ token: Token::Comparator(Comparator::Equal), source: "=".to_string(), start_line: 0, start_col: 5, end_line: 0, end_col: 6 },
+            TokenData{ token: Token::Value("test".to_string()), source: "\"test\"".to_string(), start_line: 0, start_col: 7, end_line: 0, end_col: 13 },
+
+            TokenData{ token: Token::JoinType(JoinType::Or), source: "|".to_string(), start_line: 0, start_col: 14, end_line: 0, end_col: 15 },
+
+            TokenData{ token: Token::Name("test_2".to_string()), source: "test_2".to_string(), start_line: 0, start_col: 16, end_line: 0, end_col: 22 },
+            TokenData{ token: Token::Comparator(Comparator::Equal), source: "=".to_string(), start_line: 0, start_col: 23, end_line: 0, end_col: 24 },
+            TokenData{ token: Token::Value("test_2".to_string()), source: "\"test_2\"".to_string(), start_line: 0, start_col: 25, end_line: 0, end_col: 33 },
+
+            TokenData{ token: Token::JoinType(JoinType::And), source: "&".to_string(), start_line: 0, start_col: 34, end_line: 0, end_col: 35 },
+
+            TokenData{ token: Token::Name("test_3".to_string()), source: "test_3".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+            TokenData{ token: Token::Comparator(Comparator::Equal), source: "=".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+            TokenData{ token: Token::Value("test_3".to_string()), source: "\"test_3\"".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 }
         ]);
 
         let expected = LinkedList::from([
-            Token::Name("test".to_string()), Token::Comparator(Comparator::Equal), Token::Value("test".to_string()),
-            Token::Name("test_2".to_string()), Token::Comparator(Comparator::GreaterThan), Token::Value("test_2".to_string()),
-            Token::Name("test_3".to_string()), Token::Comparator(Comparator::GreaterThan), Token::Value("test_3".to_string()),
-            Token::JoinType(JoinType::And),
-            Token::JoinType(JoinType::Or)
+            TokenData{ token: Token::Name("test".to_string()), source: "test".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 4 },
+            TokenData{ token: Token::Comparator(Comparator::Equal), source: "=".to_string(), start_line: 0, start_col: 5, end_line: 0, end_col: 6 },
+            TokenData{ token: Token::Value("test".to_string()), source: "\"test\"".to_string(), start_line: 0, start_col: 7, end_line: 0, end_col: 13 },
+
+            TokenData{ token: Token::Name("test_2".to_string()), source: "test_2".to_string(), start_line: 0, start_col: 16, end_line: 0, end_col: 22 },
+            TokenData{ token: Token::Comparator(Comparator::Equal), source: "=".to_string(), start_line: 0, start_col: 23, end_line: 0, end_col: 24 },
+            TokenData{ token: Token::Value("test_2".to_string()), source: "\"test_2\"".to_string(), start_line: 0, start_col: 25, end_line: 0, end_col: 33 },
+
+            TokenData{ token: Token::Name("test_3".to_string()), source: "test_3".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+            TokenData{ token: Token::Comparator(Comparator::Equal), source: "=".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+            TokenData{ token: Token::Value("test_3".to_string()), source: "\"test_3\"".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+
+            TokenData{ token: Token::JoinType(JoinType::And), source: "&".to_string(), start_line: 0, start_col: 34, end_line: 0, end_col: 35 },
+            TokenData{ token: Token::JoinType(JoinType::Or), source: "|".to_string(), start_line: 0, start_col: 14, end_line: 0, end_col: 15 }
         ]);
         let result = to_postfix(input);
 
@@ -375,19 +463,39 @@ mod to_postfix_tests {
     #[test]
     fn gives_and_precedence_over_or_2() {
         let input = LinkedList::from([
-            Token::Name("test".to_string()), Token::Comparator(Comparator::Equal), Token::Value("test".to_string()),
-            Token::JoinType(JoinType::And),
-            Token::Name("test_2".to_string()), Token::Comparator(Comparator::GreaterThan), Token::Value("test_2".to_string()),
-            Token::JoinType(JoinType::Or),
-            Token::Name("test_3".to_string()), Token::Comparator(Comparator::GreaterThan), Token::Value("test_3".to_string())
+            TokenData{ token: Token::Name("test".to_string()), source: "test".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 4 },
+            TokenData{ token: Token::Comparator(Comparator::Equal), source: "=".to_string(), start_line: 0, start_col: 5, end_line: 0, end_col: 6 },
+            TokenData{ token: Token::Value("test".to_string()), source: "\"test\"".to_string(), start_line: 0, start_col: 7, end_line: 0, end_col: 13 },
+
+            TokenData{ token: Token::JoinType(JoinType::And), source: "&".to_string(), start_line: 0, start_col: 14, end_line: 0, end_col: 15 },
+
+            TokenData{ token: Token::Name("test_2".to_string()), source: "test_2".to_string(), start_line: 0, start_col: 16, end_line: 0, end_col: 22 },
+            TokenData{ token: Token::Comparator(Comparator::Equal), source: "=".to_string(), start_line: 0, start_col: 23, end_line: 0, end_col: 24 },
+            TokenData{ token: Token::Value("test_2".to_string()), source: "\"test_2\"".to_string(), start_line: 0, start_col: 25, end_line: 0, end_col: 33 },
+
+            TokenData{ token: Token::JoinType(JoinType::Or), source: "|".to_string(), start_line: 0, start_col: 34, end_line: 0, end_col: 35 },
+
+            TokenData{ token: Token::Name("test_3".to_string()), source: "test_3".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+            TokenData{ token: Token::Comparator(Comparator::Equal), source: "=".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+            TokenData{ token: Token::Value("test_3".to_string()), source: "\"test_3\"".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 }
         ]);
 
         let expected = LinkedList::from([
-            Token::Name("test".to_string()), Token::Comparator(Comparator::Equal), Token::Value("test".to_string()),
-            Token::Name("test_2".to_string()), Token::Comparator(Comparator::GreaterThan), Token::Value("test_2".to_string()),
-            Token::JoinType(JoinType::And),
-            Token::Name("test_3".to_string()), Token::Comparator(Comparator::GreaterThan), Token::Value("test_3".to_string()),
-            Token::JoinType(JoinType::Or)
+            TokenData{ token: Token::Name("test".to_string()), source: "test".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 4 },
+            TokenData{ token: Token::Comparator(Comparator::Equal), source: "=".to_string(), start_line: 0, start_col: 5, end_line: 0, end_col: 6 },
+            TokenData{ token: Token::Value("test".to_string()), source: "\"test\"".to_string(), start_line: 0, start_col: 7, end_line: 0, end_col: 13 },
+
+            TokenData{ token: Token::Name("test_2".to_string()), source: "test_2".to_string(), start_line: 0, start_col: 16, end_line: 0, end_col: 22 },
+            TokenData{ token: Token::Comparator(Comparator::Equal), source: "=".to_string(), start_line: 0, start_col: 23, end_line: 0, end_col: 24 },
+            TokenData{ token: Token::Value("test_2".to_string()), source: "\"test_2\"".to_string(), start_line: 0, start_col: 25, end_line: 0, end_col: 33 },
+
+            TokenData{ token: Token::JoinType(JoinType::And), source: "&".to_string(), start_line: 0, start_col: 14, end_line: 0, end_col: 15 },
+
+            TokenData{ token: Token::Name("test_3".to_string()), source: "test_3".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+            TokenData{ token: Token::Comparator(Comparator::Equal), source: "=".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+            TokenData{ token: Token::Value("test_3".to_string()), source: "\"test_3\"".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+
+            TokenData{ token: Token::JoinType(JoinType::Or), source: "|".to_string(), start_line: 0, start_col: 34, end_line: 0, end_col: 35 }
         ]);
         let result = to_postfix(input);
 
@@ -397,19 +505,39 @@ mod to_postfix_tests {
     #[test]
     fn gives_xor_precedence_over_and() {
         let input = LinkedList::from([
-            Token::Name("test".to_string()), Token::Comparator(Comparator::Equal), Token::Value("test".to_string()),
-            Token::JoinType(JoinType::And),
-            Token::Name("test_2".to_string()), Token::Comparator(Comparator::GreaterThan), Token::Value("test_2".to_string()),
-            Token::JoinType(JoinType::Xor),
-            Token::Name("test_3".to_string()), Token::Comparator(Comparator::GreaterThan), Token::Value("test_3".to_string())
+            TokenData{ token: Token::Name("test".to_string()), source: "test".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 4 },
+            TokenData{ token: Token::Comparator(Comparator::Equal), source: "=".to_string(), start_line: 0, start_col: 5, end_line: 0, end_col: 6 },
+            TokenData{ token: Token::Value("test".to_string()), source: "\"test\"".to_string(), start_line: 0, start_col: 7, end_line: 0, end_col: 13 },
+
+            TokenData{ token: Token::JoinType(JoinType::Xor), source: "^".to_string(), start_line: 0, start_col: 14, end_line: 0, end_col: 15 },
+
+            TokenData{ token: Token::Name("test_2".to_string()), source: "test_2".to_string(), start_line: 0, start_col: 16, end_line: 0, end_col: 22 },
+            TokenData{ token: Token::Comparator(Comparator::Equal), source: "=".to_string(), start_line: 0, start_col: 23, end_line: 0, end_col: 24 },
+            TokenData{ token: Token::Value("test_2".to_string()), source: "\"test_2\"".to_string(), start_line: 0, start_col: 25, end_line: 0, end_col: 33 },
+
+            TokenData{ token: Token::JoinType(JoinType::And), source: "&".to_string(), start_line: 0, start_col: 34, end_line: 0, end_col: 35 },
+
+            TokenData{ token: Token::Name("test_3".to_string()), source: "test_3".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+            TokenData{ token: Token::Comparator(Comparator::Equal), source: "=".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+            TokenData{ token: Token::Value("test_3".to_string()), source: "\"test_3\"".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 }
         ]);
 
         let expected = LinkedList::from([
-            Token::Name("test".to_string()), Token::Comparator(Comparator::Equal), Token::Value("test".to_string()),
-            Token::Name("test_2".to_string()), Token::Comparator(Comparator::GreaterThan), Token::Value("test_2".to_string()),
-            Token::Name("test_3".to_string()), Token::Comparator(Comparator::GreaterThan), Token::Value("test_3".to_string()),
-            Token::JoinType(JoinType::Xor),
-            Token::JoinType(JoinType::And)
+            TokenData{ token: Token::Name("test".to_string()), source: "test".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 4 },
+            TokenData{ token: Token::Comparator(Comparator::Equal), source: "=".to_string(), start_line: 0, start_col: 5, end_line: 0, end_col: 6 },
+            TokenData{ token: Token::Value("test".to_string()), source: "\"test\"".to_string(), start_line: 0, start_col: 7, end_line: 0, end_col: 13 },
+
+            TokenData{ token: Token::Name("test_2".to_string()), source: "test_2".to_string(), start_line: 0, start_col: 16, end_line: 0, end_col: 22 },
+            TokenData{ token: Token::Comparator(Comparator::Equal), source: "=".to_string(), start_line: 0, start_col: 23, end_line: 0, end_col: 24 },
+            TokenData{ token: Token::Value("test_2".to_string()), source: "\"test_2\"".to_string(), start_line: 0, start_col: 25, end_line: 0, end_col: 33 },
+            
+            TokenData{ token: Token::JoinType(JoinType::Xor), source: "^".to_string(), start_line: 0, start_col: 14, end_line: 0, end_col: 15 },
+
+            TokenData{ token: Token::Name("test_3".to_string()), source: "test_3".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+            TokenData{ token: Token::Comparator(Comparator::Equal), source: "=".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+            TokenData{ token: Token::Value("test_3".to_string()), source: "\"test_3\"".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+
+            TokenData{ token: Token::JoinType(JoinType::And), source: "&".to_string(), start_line: 0, start_col: 34, end_line: 0, end_col: 35 }
         ]);
         let result = to_postfix(input);
 
@@ -419,19 +547,38 @@ mod to_postfix_tests {
     #[test]
     fn gives_xor_precedence_over_and_2() {
         let input = LinkedList::from([
-            Token::Name("test".to_string()), Token::Comparator(Comparator::Equal), Token::Value("test".to_string()),
-            Token::JoinType(JoinType::Xor),
-            Token::Name("test_2".to_string()), Token::Comparator(Comparator::GreaterThan), Token::Value("test_2".to_string()),
-            Token::JoinType(JoinType::And),
-            Token::Name("test_3".to_string()), Token::Comparator(Comparator::GreaterThan), Token::Value("test_3".to_string())
+            TokenData{ token: Token::Name("test".to_string()), source: "test".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 4 },
+            TokenData{ token: Token::Comparator(Comparator::Equal), source: "=".to_string(), start_line: 0, start_col: 5, end_line: 0, end_col: 6 },
+            TokenData{ token: Token::Value("test".to_string()), source: "\"test\"".to_string(), start_line: 0, start_col: 7, end_line: 0, end_col: 13 },
+
+            TokenData{ token: Token::JoinType(JoinType::And), source: "&".to_string(), start_line: 0, start_col: 14, end_line: 0, end_col: 15 },
+
+            TokenData{ token: Token::Name("test_2".to_string()), source: "test_2".to_string(), start_line: 0, start_col: 16, end_line: 0, end_col: 22 },
+            TokenData{ token: Token::Comparator(Comparator::Equal), source: "=".to_string(), start_line: 0, start_col: 23, end_line: 0, end_col: 24 },
+            TokenData{ token: Token::Value("test_2".to_string()), source: "\"test_2\"".to_string(), start_line: 0, start_col: 25, end_line: 0, end_col: 33 },
+
+            TokenData{ token: Token::JoinType(JoinType::Xor), source: "^".to_string(), start_line: 0, start_col: 34, end_line: 0, end_col: 35 },
+
+            TokenData{ token: Token::Name("test_3".to_string()), source: "test_3".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+            TokenData{ token: Token::Comparator(Comparator::Equal), source: "=".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+            TokenData{ token: Token::Value("test_3".to_string()), source: "\"test_3\"".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 }
         ]);
 
         let expected = LinkedList::from([
-            Token::Name("test".to_string()), Token::Comparator(Comparator::Equal), Token::Value("test".to_string()),
-            Token::Name("test_2".to_string()), Token::Comparator(Comparator::GreaterThan), Token::Value("test_2".to_string()),
-            Token::JoinType(JoinType::Xor),
-            Token::Name("test_3".to_string()), Token::Comparator(Comparator::GreaterThan), Token::Value("test_3".to_string()),
-            Token::JoinType(JoinType::And)
+            TokenData{ token: Token::Name("test".to_string()), source: "test".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 4 },
+            TokenData{ token: Token::Comparator(Comparator::Equal), source: "=".to_string(), start_line: 0, start_col: 5, end_line: 0, end_col: 6 },
+            TokenData{ token: Token::Value("test".to_string()), source: "\"test\"".to_string(), start_line: 0, start_col: 7, end_line: 0, end_col: 13 },
+
+            TokenData{ token: Token::Name("test_2".to_string()), source: "test_2".to_string(), start_line: 0, start_col: 16, end_line: 0, end_col: 22 },
+            TokenData{ token: Token::Comparator(Comparator::Equal), source: "=".to_string(), start_line: 0, start_col: 23, end_line: 0, end_col: 24 },
+            TokenData{ token: Token::Value("test_2".to_string()), source: "\"test_2\"".to_string(), start_line: 0, start_col: 25, end_line: 0, end_col: 33 },
+
+            TokenData{ token: Token::Name("test_3".to_string()), source: "test_3".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+            TokenData{ token: Token::Comparator(Comparator::Equal), source: "=".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+            TokenData{ token: Token::Value("test_3".to_string()), source: "\"test_3\"".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+
+            TokenData{ token: Token::JoinType(JoinType::Xor), source: "^".to_string(), start_line: 0, start_col: 34, end_line: 0, end_col: 35 },
+            TokenData{ token: Token::JoinType(JoinType::And), source: "&".to_string(), start_line: 0, start_col: 14, end_line: 0, end_col: 15 }
         ]);
         let result = to_postfix(input);
 
@@ -441,21 +588,41 @@ mod to_postfix_tests {
     #[test]
     fn parentheses_override_precedence_and_over_or() {
         let input = LinkedList::from([
-            Token::Name("test".to_string()), Token::Comparator(Comparator::Equal), Token::Value("test".to_string()),
-            Token::JoinType(JoinType::And),
-            Token::OpenParen,
-            Token::Name("test_2".to_string()), Token::Comparator(Comparator::GreaterThan), Token::Value("test_2".to_string()),
-            Token::JoinType(JoinType::Or),
-            Token::Name("test_3".to_string()), Token::Comparator(Comparator::GreaterThan), Token::Value("test_3".to_string()),
-            Token::CloseParen
+            TokenData{ token: Token::Name("test".to_string()), source: "test".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 4 },
+            TokenData{ token: Token::Comparator(Comparator::Equal), source: "=".to_string(), start_line: 0, start_col: 5, end_line: 0, end_col: 6 },
+            TokenData{ token: Token::Value("test".to_string()), source: "\"test\"".to_string(), start_line: 0, start_col: 7, end_line: 0, end_col: 13 },
+            
+            TokenData{ token: Token::JoinType(JoinType::And), source: "&".to_string(), start_line: 0, start_col: 14, end_line: 0, end_col: 15 },
+            TokenData{ token: Token::OpenParen, source: "(".to_string(), start_line: 0, start_col: 16, end_line: 0, end_col: 17 },
+            
+            TokenData{ token: Token::Name("test_2".to_string()), source: "test_2".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+            TokenData{ token: Token::Comparator(Comparator::Equal), source: "=".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+            TokenData{ token: Token::Value("test_2".to_string()), source: "\"test_2\"".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+            
+            TokenData{ token: Token::JoinType(JoinType::Or), source: "|".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+            
+            TokenData{ token: Token::Name("test_3".to_string()), source: "test_3".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+            TokenData{ token: Token::Comparator(Comparator::Equal), source: "=".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+            TokenData{ token: Token::Value("test_3".to_string()), source: "\"test_3\"".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+
+            TokenData{ token: Token::CloseParen, source: ")".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 }
         ]);
 
         let expected = LinkedList::from([
-            Token::Name("test".to_string()), Token::Comparator(Comparator::Equal), Token::Value("test".to_string()),
-            Token::Name("test_2".to_string()), Token::Comparator(Comparator::GreaterThan), Token::Value("test_2".to_string()),
-            Token::Name("test_3".to_string()), Token::Comparator(Comparator::GreaterThan), Token::Value("test_3".to_string()),
-            Token::JoinType(JoinType::Or),
-            Token::JoinType(JoinType::And)
+            TokenData{ token: Token::Name("test".to_string()), source: "test".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 4 },
+            TokenData{ token: Token::Comparator(Comparator::Equal), source: "=".to_string(), start_line: 0, start_col: 5, end_line: 0, end_col: 6 },
+            TokenData{ token: Token::Value("test".to_string()), source: "\"test\"".to_string(), start_line: 0, start_col: 7, end_line: 0, end_col: 13 },
+            
+            TokenData{ token: Token::Name("test_2".to_string()), source: "test_2".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+            TokenData{ token: Token::Comparator(Comparator::Equal), source: "=".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+            TokenData{ token: Token::Value("test_2".to_string()), source: "\"test_2\"".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+    
+            TokenData{ token: Token::Name("test_3".to_string()), source: "test_3".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+            TokenData{ token: Token::Comparator(Comparator::Equal), source: "=".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+            TokenData{ token: Token::Value("test_3".to_string()), source: "\"test_3\"".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+
+            TokenData{ token: Token::JoinType(JoinType::Or), source: "|".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+            TokenData{ token: Token::JoinType(JoinType::And), source: "&".to_string(), start_line: 0, start_col: 14, end_line: 0, end_col: 15 }
         ]);
         let result = to_postfix(input);
 
@@ -465,21 +632,41 @@ mod to_postfix_tests {
     #[test]
     fn parentheses_override_precedence_xor_over_and() {
         let input = LinkedList::from([
-            Token::Name("test".to_string()), Token::Comparator(Comparator::Equal), Token::Value("test".to_string()),
-            Token::JoinType(JoinType::Xor),
-            Token::OpenParen,
-            Token::Name("test_2".to_string()), Token::Comparator(Comparator::GreaterThan), Token::Value("test_2".to_string()),
-            Token::JoinType(JoinType::And),
-            Token::Name("test_3".to_string()), Token::Comparator(Comparator::GreaterThan), Token::Value("test_3".to_string()),
-            Token::CloseParen
+            TokenData{ token: Token::Name("test".to_string()), source: "test".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 4 },
+            TokenData{ token: Token::Comparator(Comparator::Equal), source: "=".to_string(), start_line: 0, start_col: 5, end_line: 0, end_col: 6 },
+            TokenData{ token: Token::Value("test".to_string()), source: "\"test\"".to_string(), start_line: 0, start_col: 7, end_line: 0, end_col: 13 },
+
+            TokenData{ token: Token::JoinType(JoinType::Xor), source: "^".to_string(), start_line: 0, start_col: 14, end_line: 0, end_col: 15 },
+            TokenData{ token: Token::OpenParen, source: "(".to_string(), start_line: 0, start_col: 16, end_line: 0, end_col: 17 },
+
+            TokenData{ token: Token::Name("test_2".to_string()), source: "test_2".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+            TokenData{ token: Token::Comparator(Comparator::Equal), source: "=".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+            TokenData{ token: Token::Value("test_2".to_string()), source: "\"test_2\"".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+
+            TokenData{ token: Token::JoinType(JoinType::And), source: "&".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+
+            TokenData{ token: Token::Name("test_3".to_string()), source: "test_3".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+            TokenData{ token: Token::Comparator(Comparator::Equal), source: "=".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+            TokenData{ token: Token::Value("test_3".to_string()), source: "\"test_3\"".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+
+            TokenData{ token: Token::CloseParen, source: ")".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 }
         ]);
 
         let expected = LinkedList::from([
-            Token::Name("test".to_string()), Token::Comparator(Comparator::Equal), Token::Value("test".to_string()),
-            Token::Name("test_2".to_string()), Token::Comparator(Comparator::GreaterThan), Token::Value("test_2".to_string()),
-            Token::Name("test_3".to_string()), Token::Comparator(Comparator::GreaterThan), Token::Value("test_3".to_string()),
-            Token::JoinType(JoinType::And),
-            Token::JoinType(JoinType::Xor)
+            TokenData{ token: Token::Name("test".to_string()), source: "test".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 4 },
+            TokenData{ token: Token::Comparator(Comparator::Equal), source: "=".to_string(), start_line: 0, start_col: 5, end_line: 0, end_col: 6 },
+            TokenData{ token: Token::Value("test".to_string()), source: "\"test\"".to_string(), start_line: 0, start_col: 7, end_line: 0, end_col: 13 },
+
+            TokenData{ token: Token::Name("test_2".to_string()), source: "test_2".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+            TokenData{ token: Token::Comparator(Comparator::Equal), source: "=".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+            TokenData{ token: Token::Value("test_2".to_string()), source: "\"test_2\"".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+
+            TokenData{ token: Token::Name("test_3".to_string()), source: "test_3".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+            TokenData{ token: Token::Comparator(Comparator::Equal), source: "=".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+            TokenData{ token: Token::Value("test_3".to_string()), source: "\"test_3\"".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+
+            TokenData{ token: Token::JoinType(JoinType::And), source: "&".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+            TokenData{ token: Token::JoinType(JoinType::Xor), source: "^".to_string(), start_line: 0, start_col: 14, end_line: 0, end_col: 15 }
         ]);
         let result = to_postfix(input);
 
@@ -489,37 +676,81 @@ mod to_postfix_tests {
     #[test]
     fn correctly_transforms_complex_expressions() {
         let input = LinkedList::from([
-            Token::Name("test".to_string()), Token::Comparator(Comparator::Equal), Token::Value("test".to_string()),
-            Token::JoinType(JoinType::Xor),
-            Token::OpenParen,
-            Token::Name("test_2".to_string()), Token::Comparator(Comparator::GreaterThan), Token::Value("test_2".to_string()),
-            Token::JoinType(JoinType::And),
-            Token::Name("test_3".to_string()), Token::Comparator(Comparator::GreaterThan), Token::Value("test_3".to_string()),
-            Token::CloseParen,
-            Token::JoinType(JoinType::Or),
-            Token::OpenParen,
-            Token::OpenParen,
-            Token::Name("test_4".to_string()), Token::Comparator(Comparator::GreaterThan), Token::Value("test_4".to_string()),
-            Token::CloseParen,
-            Token::JoinType(JoinType::Xor),
-            Token::Name("test_5".to_string()), Token::Comparator(Comparator::GreaterThan), Token::Value("test_5".to_string()),
-            Token::CloseParen,
-            Token::JoinType(JoinType::Or),
-            Token::Name("test_6".to_string()), Token::Comparator(Comparator::GreaterThan), Token::Value("test_6".to_string()),
+            TokenData{ token: Token::Name("test".to_string()), source: "test".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 4 },
+            TokenData{ token: Token::Comparator(Comparator::Equal), source: "=".to_string(), start_line: 0, start_col: 5, end_line: 0, end_col: 6 },
+            TokenData{ token: Token::Value("test".to_string()), source: "\"test\"".to_string(), start_line: 0, start_col: 7, end_line: 0, end_col: 13 },
+            
+            TokenData{ token: Token::JoinType(JoinType::Xor), source: "^".to_string(), start_line: 0, start_col: 14, end_line: 0, end_col: 15 },
+            TokenData{ token: Token::OpenParen, source: "(".to_string(), start_line: 0, start_col: 16, end_line: 0, end_col: 17 },
+            
+            TokenData{ token: Token::Name("test_2".to_string()), source: "test_2".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+            TokenData{ token: Token::Comparator(Comparator::Equal), source: "=".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+            TokenData{ token: Token::Value("test_2".to_string()), source: "\"test_2\"".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+            
+            TokenData{ token: Token::JoinType(JoinType::And), source: "&".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+            
+            TokenData{ token: Token::Name("test_3".to_string()), source: "test_3".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+            TokenData{ token: Token::Comparator(Comparator::Equal), source: "=".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+            TokenData{ token: Token::Value("test_3".to_string()), source: "\"test_3\"".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+            
+            TokenData{ token: Token::CloseParen, source: ")".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+            TokenData{ token: Token::JoinType(JoinType::Or), source: "|".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+            TokenData{ token: Token::OpenParen, source: "(".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+            TokenData{ token: Token::OpenParen, source: "(".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+
+            TokenData{ token: Token::Name("test_4".to_string()), source: "test_4".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+            TokenData{ token: Token::Comparator(Comparator::GreaterThan), source: ">".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+            TokenData{ token: Token::Value("test_4".to_string()), source: "\"test_4\"".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+            
+            TokenData{ token: Token::CloseParen, source: ")".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+            TokenData{ token: Token::JoinType(JoinType::Xor), source: "^".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+
+            TokenData{ token: Token::Name("test_5".to_string()), source: "test_5".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+            TokenData{ token: Token::Comparator(Comparator::GreaterThanOrEqual), source: ">=".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+            TokenData{ token: Token::Value("test_5".to_string()), source: "\"test_5\"".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+
+            TokenData{ token: Token::CloseParen, source: ")".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+            TokenData{ token: Token::JoinType(JoinType::Or), source: "|".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+
+            TokenData{ token: Token::Name("test_6".to_string()), source: "test_6".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+            TokenData{ token: Token::Comparator(Comparator::GreaterThanOrEqual), source: ">=".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+            TokenData{ token: Token::Value("test_6".to_string()), source: "\"test_6\"".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
         ]);
 
         let expected = LinkedList::from([
-            Token::Name("test".to_string()), Token::Comparator(Comparator::Equal), Token::Value("test".to_string()),
-            Token::Name("test_2".to_string()), Token::Comparator(Comparator::GreaterThan), Token::Value("test_2".to_string()),
-            Token::Name("test_3".to_string()), Token::Comparator(Comparator::GreaterThan), Token::Value("test_3".to_string()),
-            Token::JoinType(JoinType::And),
-            Token::JoinType(JoinType::Xor),
-            Token::Name("test_4".to_string()), Token::Comparator(Comparator::GreaterThan), Token::Value("test_4".to_string()),
-            Token::Name("test_5".to_string()), Token::Comparator(Comparator::GreaterThan), Token::Value("test_5".to_string()),
-            Token::JoinType(JoinType::Xor),
-            Token::JoinType(JoinType::Or),
-            Token::Name("test_6".to_string()), Token::Comparator(Comparator::GreaterThan), Token::Value("test_6".to_string()),
-            Token::JoinType(JoinType::Or),
+            TokenData{ token: Token::Name("test".to_string()), source: "test".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 4 },
+            TokenData{ token: Token::Comparator(Comparator::Equal), source: "=".to_string(), start_line: 0, start_col: 5, end_line: 0, end_col: 6 },
+            TokenData{ token: Token::Value("test".to_string()), source: "\"test\"".to_string(), start_line: 0, start_col: 7, end_line: 0, end_col: 13 },
+
+
+            TokenData{ token: Token::Name("test_2".to_string()), source: "test_2".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+            TokenData{ token: Token::Comparator(Comparator::Equal), source: "=".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+            TokenData{ token: Token::Value("test_2".to_string()), source: "\"test_2\"".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+
+            TokenData{ token: Token::Name("test_3".to_string()), source: "test_3".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+            TokenData{ token: Token::Comparator(Comparator::Equal), source: "=".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+            TokenData{ token: Token::Value("test_3".to_string()), source: "\"test_3\"".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+
+            TokenData{ token: Token::JoinType(JoinType::And), source: "&".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+            TokenData{ token: Token::JoinType(JoinType::Xor), source: "^".to_string(), start_line: 0, start_col: 14, end_line: 0, end_col: 15 },
+
+            TokenData{ token: Token::Name("test_4".to_string()), source: "test_4".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+            TokenData{ token: Token::Comparator(Comparator::GreaterThan), source: ">".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+            TokenData{ token: Token::Value("test_4".to_string()), source: "\"test_4\"".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+
+            TokenData{ token: Token::Name("test_5".to_string()), source: "test_5".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+            TokenData{ token: Token::Comparator(Comparator::GreaterThanOrEqual), source: ">=".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+            TokenData{ token: Token::Value("test_5".to_string()), source: "\"test_5\"".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+
+
+            TokenData{ token: Token::JoinType(JoinType::Xor), source: "^".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+            TokenData{ token: Token::JoinType(JoinType::Or), source: "|".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+
+            TokenData{ token: Token::Name("test_6".to_string()), source: "test_6".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+            TokenData{ token: Token::Comparator(Comparator::GreaterThanOrEqual), source: ">=".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+            TokenData{ token: Token::Value("test_6".to_string()), source: "\"test_6\"".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+
+            TokenData{ token: Token::JoinType(JoinType::Or), source: "|".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 }
         ]);
         let result = to_postfix(input);
 
@@ -527,15 +758,26 @@ mod to_postfix_tests {
     }
 
     #[test]
-    #[should_panic(expected = "Unopened")]
+    #[should_panic(expected = "without a preceding open")]
     fn panics_if_given_close_paren_without_open() {
         let input = LinkedList::from([
-            Token::Name("test".to_string()), Token::Comparator(Comparator::Equal), Token::Value("test".to_string()),
-            Token::JoinType(JoinType::And),
-            Token::Name("test_2".to_string()), Token::Comparator(Comparator::GreaterThan), Token::Value("test_2".to_string()),
-            Token::JoinType(JoinType::Or),
-            Token::Name("test_3".to_string()), Token::Comparator(Comparator::GreaterThan), Token::Value("test_3".to_string()),
-            Token::CloseParen
+            TokenData{ token: Token::Name("test".to_string()), source: "test".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 4 },
+            TokenData{ token: Token::Comparator(Comparator::Equal), source: "=".to_string(), start_line: 0, start_col: 5, end_line: 0, end_col: 6 },
+            TokenData{ token: Token::Value("test".to_string()), source: "\"test\"".to_string(), start_line: 0, start_col: 7, end_line: 0, end_col: 13 },
+
+            TokenData{ token: Token::JoinType(JoinType::And), source: "&".to_string(), start_line: 0, start_col: 14, end_line: 0, end_col: 15 },
+
+            TokenData{ token: Token::Name("test_2".to_string()), source: "test_2".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+            TokenData{ token: Token::Comparator(Comparator::Equal), source: "=".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+            TokenData{ token: Token::Value("test_2".to_string()), source: "\"test_2\"".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+
+            TokenData{ token: Token::JoinType(JoinType::Or), source: "|".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+
+            TokenData{ token: Token::Name("test_3".to_string()), source: "test_3".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+            TokenData{ token: Token::Comparator(Comparator::Equal), source: "=".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+            TokenData{ token: Token::Value("test_3".to_string()), source: "\"test_3\"".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+
+            TokenData{ token: Token::CloseParen, source: ")".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 }
         ]);
 
         to_postfix(input);
@@ -545,12 +787,22 @@ mod to_postfix_tests {
     #[should_panic(expected = "Unclosed")]
     fn panics_if_given_open_paren_without_close() {
         let input = LinkedList::from([
-            Token::Name("test".to_string()), Token::Comparator(Comparator::Equal), Token::Value("test".to_string()),
-            Token::JoinType(JoinType::And),
-            Token::OpenParen,
-            Token::Name("test_2".to_string()), Token::Comparator(Comparator::GreaterThan), Token::Value("test_2".to_string()),
-            Token::JoinType(JoinType::Or),
-            Token::Name("test_3".to_string()), Token::Comparator(Comparator::GreaterThan), Token::Value("test_3".to_string()),
+            TokenData{ token: Token::Name("test".to_string()), source: "test".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 4 },
+            TokenData{ token: Token::Comparator(Comparator::Equal), source: "=".to_string(), start_line: 0, start_col: 5, end_line: 0, end_col: 6 },
+            TokenData{ token: Token::Value("test".to_string()), source: "\"test\"".to_string(), start_line: 0, start_col: 7, end_line: 0, end_col: 13 },
+
+            TokenData{ token: Token::JoinType(JoinType::And), source: "&".to_string(), start_line: 0, start_col: 14, end_line: 0, end_col: 15 },
+            TokenData{ token: Token::OpenParen, source: "(".to_string(), start_line: 0, start_col: 16, end_line: 0, end_col: 17 },
+
+            TokenData{ token: Token::Name("test_2".to_string()), source: "test_2".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+            TokenData{ token: Token::Comparator(Comparator::Equal), source: "=".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+            TokenData{ token: Token::Value("test_2".to_string()), source: "\"test_2\"".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+
+            TokenData{ token: Token::JoinType(JoinType::Or), source: "|".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+
+            TokenData{ token: Token::Name("test_3".to_string()), source: "test_3".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+            TokenData{ token: Token::Comparator(Comparator::Equal), source: "=".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+            TokenData{ token: Token::Value("test_3".to_string()), source: "\"test_3\"".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
         ]);
 
         to_postfix(input);
@@ -560,14 +812,24 @@ mod to_postfix_tests {
     #[should_panic(expected = "Unclosed")]
     fn panics_on_bad_nested_parens() {
         let input = LinkedList::from([
-            Token::Name("test".to_string()), Token::Comparator(Comparator::Equal), Token::Value("test".to_string()),
-            Token::JoinType(JoinType::And),
-            Token::OpenParen,
-            Token::OpenParen,
-            Token::Name("test_2".to_string()), Token::Comparator(Comparator::GreaterThan), Token::Value("test_2".to_string()),
-            Token::CloseParen,
-            Token::JoinType(JoinType::Or),
-            Token::Name("test_3".to_string()), Token::Comparator(Comparator::GreaterThan), Token::Value("test_3".to_string()),
+            TokenData{ token: Token::Name("test".to_string()), source: "test".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 4 },
+            TokenData{ token: Token::Comparator(Comparator::Equal), source: "=".to_string(), start_line: 0, start_col: 5, end_line: 0, end_col: 6 },
+            TokenData{ token: Token::Value("test".to_string()), source: "\"test\"".to_string(), start_line: 0, start_col: 7, end_line: 0, end_col: 13 },
+
+            TokenData{ token: Token::JoinType(JoinType::And), source: "&".to_string(), start_line: 0, start_col: 14, end_line: 0, end_col: 15 },
+            TokenData{ token: Token::OpenParen, source: "(".to_string(), start_line: 0, start_col: 16, end_line: 0, end_col: 17 },
+            TokenData{ token: Token::OpenParen, source: "(".to_string(), start_line: 0, start_col: 18, end_line: 0, end_col: 19 },
+
+            TokenData{ token: Token::Name("test_2".to_string()), source: "test_2".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+            TokenData{ token: Token::Comparator(Comparator::Equal), source: "=".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+            TokenData{ token: Token::Value("test_2".to_string()), source: "\"test_2\"".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+            
+            TokenData{ token: Token::CloseParen, source: ")".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+            TokenData{ token: Token::JoinType(JoinType::Or), source: "|".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+
+            TokenData{ token: Token::Name("test_3".to_string()), source: "test_3".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+            TokenData{ token: Token::Comparator(Comparator::Equal), source: "=".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+            TokenData{ token: Token::Value("test_3".to_string()), source: "\"test_3\"".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
         ]);
 
         to_postfix(input);
@@ -577,13 +839,24 @@ mod to_postfix_tests {
     #[should_panic(expected = "Expected operator")]
     fn panics_on_out_of_order_open_parentheses() {
         let input = LinkedList::from([
-            Token::Name("test".to_string()), Token::Comparator(Comparator::Equal), Token::Value("test".to_string()),
-            Token::OpenParen,
-            Token::JoinType(JoinType::And),
-            Token::Name("test_2".to_string()), Token::Comparator(Comparator::GreaterThan), Token::Value("test_2".to_string()),
-            Token::JoinType(JoinType::Or),
-            Token::Name("test_3".to_string()), Token::Comparator(Comparator::GreaterThan), Token::Value("test_3".to_string()),
-            Token::CloseParen
+            TokenData{ token: Token::Name("test".to_string()), source: "test".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 4 },
+            TokenData{ token: Token::Comparator(Comparator::Equal), source: "=".to_string(), start_line: 0, start_col: 5, end_line: 0, end_col: 6 },
+            TokenData{ token: Token::Value("test".to_string()), source: "\"test\"".to_string(), start_line: 0, start_col: 7, end_line: 0, end_col: 13 },
+
+            TokenData{ token: Token::OpenParen, source: "(".to_string(), start_line: 0, start_col: 16, end_line: 0, end_col: 17 },
+            TokenData{ token: Token::JoinType(JoinType::And), source: "&".to_string(), start_line: 0, start_col: 14, end_line: 0, end_col: 15 },
+
+            TokenData{ token: Token::Name("test_2".to_string()), source: "test_2".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+            TokenData{ token: Token::Comparator(Comparator::Equal), source: "=".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+            TokenData{ token: Token::Value("test_2".to_string()), source: "\"test_2\"".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+
+            TokenData{ token: Token::JoinType(JoinType::Or), source: "|".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+
+            TokenData{ token: Token::Name("test_3".to_string()), source: "test_3".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+            TokenData{ token: Token::Comparator(Comparator::Equal), source: "=".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+            TokenData{ token: Token::Value("test_3".to_string()), source: "\"test_3\"".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+
+            TokenData{ token: Token::CloseParen, source: ")".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 }
         ]);
 
         to_postfix(input);
@@ -593,13 +866,23 @@ mod to_postfix_tests {
     #[should_panic(expected = "Unexpected close")]
     fn panics_on_out_of_order_close_parentheses() {
         let input = LinkedList::from([
-            Token::Name("test".to_string()), Token::Comparator(Comparator::Equal), Token::Value("test".to_string()),
-            Token::JoinType(JoinType::And),
-            Token::OpenParen,
-            Token::Name("test_2".to_string()), Token::Comparator(Comparator::GreaterThan), Token::Value("test_2".to_string()),
-            Token::JoinType(JoinType::Or),
-            Token::CloseParen,
-            Token::Name("test_3".to_string()), Token::Comparator(Comparator::GreaterThan), Token::Value("test_3".to_string())
+            TokenData{ token: Token::Name("test".to_string()), source: "test".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 4 },
+            TokenData{ token: Token::Comparator(Comparator::Equal), source: "=".to_string(), start_line: 0, start_col: 5, end_line: 0, end_col: 6 },
+            TokenData{ token: Token::Value("test".to_string()), source: "\"test\"".to_string(), start_line: 0, start_col: 7, end_line: 0, end_col: 13 },
+
+            TokenData{ token: Token::JoinType(JoinType::And), source: "&".to_string(), start_line: 0, start_col: 14, end_line: 0, end_col: 15 },
+            TokenData{ token: Token::OpenParen, source: "(".to_string(), start_line: 0, start_col: 16, end_line: 0, end_col: 17 },
+
+            TokenData{ token: Token::Name("test_2".to_string()), source: "test_2".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+            TokenData{ token: Token::Comparator(Comparator::Equal), source: "=".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+            TokenData{ token: Token::Value("test_2".to_string()), source: "\"test_2\"".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+
+            TokenData{ token: Token::JoinType(JoinType::Or), source: "|".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+            TokenData{ token: Token::CloseParen, source: ")".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+
+            TokenData{ token: Token::Name("test_3".to_string()), source: "test_3".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+            TokenData{ token: Token::Comparator(Comparator::Equal), source: "=".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
+            TokenData{ token: Token::Value("test_3".to_string()), source: "\"test_3\"".to_string(), start_line: 0, start_col: 0, end_line: 0, end_col: 0 },
         ]);
 
         to_postfix(input);
