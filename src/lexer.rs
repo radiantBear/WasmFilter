@@ -58,7 +58,7 @@ pub fn lex_name(c: char, s: &mut Chars) -> String {
     let mut name = String::from(c);
 
     while let Some(c) = s.peek() {
-        if !c.is_alphabetic() && *c != '_' {
+        if !c.is_alphanumeric() && *c != '_' {
             break;
         }
 
