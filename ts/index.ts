@@ -83,8 +83,11 @@ function handleFilterInput(e: Event) {
             case BareToken.Comparator:
                 className = 'hl-cmpr';
                 break;
-            case BareToken.Value:
+            case BareToken.String:
                 className = 'hl-str';
+                break;
+            case BareToken.Number:
+                className = 'hl-num';
                 break;
             case BareToken.JoinType:
                 className = 'hl-join';
