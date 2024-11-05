@@ -3,6 +3,7 @@ use std::fmt::Debug;
 use std::iter::Peekable;
 use std::str::Chars;
 use wasm_bindgen::prelude::*;
+use crate::types::FilterError;
 
 #[derive(Debug, Eq, PartialEq)]
 pub enum Comparator {
@@ -83,11 +84,12 @@ pub enum BareToken {
     String,
     Number,
     JoinType,
-    Paren
+    Paren,
+    Error
 }
 
 #[wasm_bindgen]
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct BareTokenData {
     pub token: BareToken,
     pub start: usize,       // 0-indexed, inclusive
@@ -98,20 +100,27 @@ pub struct BareTokenData {
     pub end_col: usize,     // 0-indexed, not inclusive
 }
 
-pub fn lex(s: String) -> Result<LinkedList<TokenData>, String> {
+pub fn lex(mut s: &mut Peekable<Chars>, mut cursor: usize, mut line: usize, mut col: usize) -> (LinkedList<TokenData>, Option<FilterError>) {
     let mut tokens = LinkedList::new();
-    let mut cursor = 0usize;
-    let mut line = 0usize;
-    let mut col = 0usize;
 
-    let s = s.chars();
-    let mut s = s.peekable();
     while let Some(c) = s.next() {
         match c {
             '"' => tokens.push_back(lex_string(&mut s, &mut cursor, &mut line, &mut col)),
             'a'..='z' | 'A'..='Z' | '_' => tokens.push_back(lex_name(c, &mut s, &mut cursor, line, &mut col)),
-            '0'..='9' | '-' => tokens.push_back(lex_number(c, &mut s, &mut cursor, line, &mut col)?),
-            '<' | '>' | '=' | '!' => tokens.push_back(lex_comparator(c, &mut s, &mut cursor, line, &mut col)?),
+            '0'..='9' | '-' | '.' => {
+                let result = lex_number(c, &mut s, &mut cursor, line, &mut col);
+                match result {
+                    Ok(token) => tokens.push_back(token),
+                    Err(error) => return (tokens, Some(error))
+                }
+            },
+            '<' | '>' | '=' | '!' => {
+                let result = lex_comparator(c, &mut s, &mut cursor, line, &mut col);
+                match result {
+                    Ok(token) => tokens.push_back(token),
+                    Err(error) => return (tokens, Some(error))
+                }
+            },
             '(' => tokens.push_back(TokenData{
                 token: Token::OpenParen,
                 source: "(".to_string(),
@@ -164,14 +173,24 @@ pub fn lex(s: String) -> Result<LinkedList<TokenData>, String> {
             }),
             '\n' => { line += 1; col = 0; cursor += 1; continue },
             c if c.is_whitespace() => { },
-            c @ _ => return Err(format!("Unexpected character '{}'", c))
+            c @ _ => return (tokens, Some(FilterError {
+                message: format!("Unexpected character '{}'", c),
+                range_start: cursor,
+                range_end: cursor + 1,
+                start: cursor,
+                start_line: line,
+                start_col: col,
+                end: cursor + 1,
+                end_line: line,
+                end_col: col + 1,
+            }))
         }
 
         col += 1;
         cursor += 1;
     }
 
-    Ok(tokens)
+    (tokens, None)
 }
 
 pub fn lex_name(c: char, s: &mut Peekable<Chars>, cursor: &mut usize, line: usize, col: &mut usize) -> TokenData {
@@ -235,8 +254,8 @@ pub fn lex_string(s: &mut Peekable<Chars>, cursor: &mut usize, line: &mut usize,
     }
 }
 
-pub fn lex_number(c: char, s: &mut Peekable<Chars>, cursor: &mut usize, line: usize, col: &mut usize) -> Result<TokenData, String> {
-    let found_decimal = false;
+pub fn lex_number(c: char, s: &mut Peekable<Chars>, cursor: &mut usize, line: usize, col: &mut usize) -> Result<TokenData, FilterError> {
+    let mut found_decimal = false;
     let start = *cursor;
     let start_col = *col;
     let mut number_string = String::from(c);
@@ -246,8 +265,26 @@ pub fn lex_number(c: char, s: &mut Peekable<Chars>, cursor: &mut usize, line: us
         if !c.is_numeric() && *c != ',' && *c != '.' {
             break;
         }
-        if *c == '.' && found_decimal {
-            return Err("Unexpected second decimal place".to_string());
+        if *c == '.' {
+            if found_decimal {
+                s.next();
+                *cursor += 1;
+                *col += 1;
+                return Err(FilterError {
+                    message: "Unexpected second decimal place".to_string(),
+                    range_start: *cursor,
+                    range_end: *cursor + 1,
+                    start,
+                    start_line: line,
+                    start_col,
+                    end: *cursor + 1,
+                    end_line: line,
+                    end_col: *col + 1
+                });
+            }
+            else {
+                found_decimal = true;
+            }
         }
 
         // Allow commas for splitting large numbers, but not actually part of number
@@ -258,6 +295,33 @@ pub fn lex_number(c: char, s: &mut Peekable<Chars>, cursor: &mut usize, line: us
         s.next();
         *col += 1;
         *cursor += 1;
+    }
+
+    if "-" == number_string.as_str() {
+        return Err(FilterError {
+            message: "Expected a number following `-`".to_string(),
+            range_start: start,
+            range_end: *cursor + 1,
+            start,
+            start_line: line,
+            start_col,
+            end: *cursor + 1,
+            end_line: line,
+            end_col: *col + 1
+        });
+    }
+    if "." == number_string.as_str() {
+        return Err(FilterError {
+            message: "Expected a number with `.`".to_string(),
+            range_start: start,
+            range_end: *cursor + 1,
+            start,
+            start_line: line,
+            start_col,
+            end: *cursor + 1,
+            end_line: line,
+            end_col: *col + 1
+        });
     }
 
     Ok(TokenData {
@@ -272,7 +336,7 @@ pub fn lex_number(c: char, s: &mut Peekable<Chars>, cursor: &mut usize, line: us
     })
 }
 
-pub fn lex_comparator(c: char, s: &mut Peekable<Chars>, cursor: &mut usize, line: usize, col: &mut usize) -> Result<TokenData, String> {
+pub fn lex_comparator(c: char, s: &mut Peekable<Chars>, cursor: &mut usize, line: usize, col: &mut usize) -> Result<TokenData, FilterError> {
     match c {
         '>' => match s.peek() {
             Some('=') => {
@@ -338,9 +402,8 @@ pub fn lex_comparator(c: char, s: &mut Peekable<Chars>, cursor: &mut usize, line
             end_line: line,
             end_col: *col + 1
         }),
-        '!' => match s.peek() {
+        '!' => match s.next() {
             Some('=') => {
-                s.next();
                 *col += 1;
                 *cursor += 1;
                 Ok(TokenData {
@@ -354,8 +417,32 @@ pub fn lex_comparator(c: char, s: &mut Peekable<Chars>, cursor: &mut usize, line
                     end_col: *col + 1
                 })
             },
-            None => Err("Unexpected end of filter after '!'".to_string()),
-            Some(c) => Err(format!("Unexpected character '{}' (expected `=` to make `!=`)", c))
+            None => Err(FilterError {
+                message: "Unexpected end of filter after '!'".to_string(),
+                range_start: *cursor,
+                range_end: *cursor + 1,
+                start: *cursor,
+                start_line: line,
+                start_col: *col,
+                end: *cursor + 1,
+                end_line: line,
+                end_col: *col + 1
+            }),
+            Some(c) => {
+                *col += 1;
+                *cursor += 1;
+                Err(FilterError {
+                    message: format!("Unexpected character '{}' (expected `=` to make `!=`)", c),
+                    range_start: *cursor - 1,
+                    range_end: *cursor + 1,
+                    start: *cursor - 1,
+                    start_line: line,
+                    start_col: *col - 1,
+                    end: *cursor + 1,
+                    end_line: line,
+                    end_col: *col + 1,
+                })
+            }
         },
         _ => panic!("Passed invalid character `{}` to lex_comparator()", c)
     }
@@ -368,6 +455,7 @@ mod lexer_tests {
     #[test]
     pub fn lexes_equal_comparator() {
         let input = "=".to_string();
+        let mut input = input.chars().peekable();
 
         let expected = LinkedList::from([TokenData {
             token: Token::Comparator(Comparator::Equal),
@@ -379,14 +467,16 @@ mod lexer_tests {
             end_line: 0,
             end_col: 1
         }]);
-        let result = lex(input);
+        let result = lex(&mut input, 0, 0, 0);
 
-        assert_eq!(result.unwrap(), expected);
+        assert_eq!(result.0, expected);
+        assert_eq!(result.1, None);
     }
 
     #[test]
     pub fn lexes_not_equal_comparator() {
         let input = "!=".to_string();
+        let mut input = input.chars().peekable();
 
         let expected = LinkedList::from([TokenData {
             token: Token::Comparator(Comparator::NotEqual),
@@ -398,14 +488,16 @@ mod lexer_tests {
             end_line: 0,
             end_col: 2
         }]);
-        let result = lex(input);
+        let result = lex(&mut input, 0, 0, 0);
 
-        assert_eq!(result.unwrap(), expected);
+        assert_eq!(result.0, expected);
+        assert_eq!(result.1, None);
     }
 
     #[test]
     pub fn lexes_less_than_comparator() {
         let input = "<".to_string();
+        let mut input = input.chars().peekable();
 
         let expected = LinkedList::from([TokenData {
             token: Token::Comparator(Comparator::LessThan),
@@ -417,14 +509,16 @@ mod lexer_tests {
             end_line: 0,
             end_col: 1
         }]);
-        let result = lex(input);
+        let result = lex(&mut input, 0, 0, 0);
 
-        assert_eq!(result.unwrap(), expected);
+        assert_eq!(result.0, expected);
+        assert_eq!(result.1, None);
     }
 
     #[test]
     pub fn lexes_less_than_or_equal_comparator() {
         let input = "<=".to_string();
+        let mut input = input.chars().peekable();
 
         let expected = LinkedList::from([TokenData {
             token: Token::Comparator(Comparator::LessThanOrEqual),
@@ -436,14 +530,16 @@ mod lexer_tests {
             end_line: 0,
             end_col: 2
         }]);
-        let result = lex(input);
+        let result = lex(&mut input, 0, 0, 0);
 
-        assert_eq!(result.unwrap(), expected);
+        assert_eq!(result.0, expected);
+        assert_eq!(result.1, None);
     }
 
     #[test]
     pub fn lexes_greater_than_comparator() {
         let input = ">".to_string();
+        let mut input = input.chars().peekable();
 
         let expected = LinkedList::from([TokenData {
             token: Token::Comparator(Comparator::GreaterThan),
@@ -455,14 +551,16 @@ mod lexer_tests {
             end_line: 0,
             end_col: 1
         }]);
-        let result = lex(input);
+        let result = lex(&mut input, 0, 0, 0);
 
-        assert_eq!(result.unwrap(), expected);
+        assert_eq!(result.0, expected);
+        assert_eq!(result.1, None);
     }
 
     #[test]
     pub fn lexes_greater_than_or_equal_comparator() {
         let input = ">=".to_string();
+        let mut input = input.chars().peekable();
 
         let expected = LinkedList::from([TokenData {
             token: Token::Comparator(Comparator::GreaterThanOrEqual),
@@ -474,14 +572,16 @@ mod lexer_tests {
             end_line: 0,
             end_col: 2
         }]);
-        let result = lex(input);
+        let result = lex(&mut input, 0, 0, 0);
 
-        assert_eq!(result.unwrap(), expected);
+        assert_eq!(result.0, expected);
+        assert_eq!(result.1, None);
     }
 
     #[test]
     pub fn lexes_and_join_type() {
         let input = "&".to_string();
+        let mut input = input.chars().peekable();
 
         let expected = LinkedList::from([TokenData {
             token: Token::JoinType(JoinType::And),
@@ -493,14 +593,16 @@ mod lexer_tests {
             end_line: 0,
             end_col: 1
         }]);
-        let result = lex(input);
+        let result = lex(&mut input, 0, 0, 0);
 
-        assert_eq!(result.unwrap(), expected);
+        assert_eq!(result.0, expected);
+        assert_eq!(result.1, None);
     }
 
     #[test]
     pub fn lexes_or_join_type() {
         let input = "|".to_string();
+        let mut input = input.chars().peekable();
 
         let expected = LinkedList::from([TokenData {
             token: Token::JoinType(JoinType::Or),
@@ -512,14 +614,16 @@ mod lexer_tests {
             end_line: 0,
             end_col: 1
         }]);
-        let result = lex(input);
+        let result = lex(&mut input, 0, 0, 0);
 
-        assert_eq!(result.unwrap(), expected);
+        assert_eq!(result.0, expected);
+        assert_eq!(result.1, None);
     }
 
     #[test]
     pub fn lexes_xor_join_type() {
         let input = "^".to_string();
+        let mut input = input.chars().peekable();
 
         let expected = LinkedList::from([TokenData {
             token: Token::JoinType(JoinType::Xor),
@@ -531,14 +635,16 @@ mod lexer_tests {
             end_line: 0,
             end_col: 1
         }]);
-        let result = lex(input);
+        let result = lex(&mut input, 0, 0, 0);
 
-        assert_eq!(result.unwrap(), expected);
+        assert_eq!(result.0, expected);
+        assert_eq!(result.1, None);
     }
 
     #[test]
     pub fn lexes_name() {
         let input = "test".to_string();
+        let mut input = input.chars().peekable();
 
         let expected = LinkedList::from([TokenData {
             token: Token::Name("test".to_string()),
@@ -550,14 +656,16 @@ mod lexer_tests {
             end_line: 0,
             end_col: 4
         }]);
-        let result = lex(input);
+        let result = lex(&mut input, 0, 0, 0);
 
-        assert_eq!(result.unwrap(), expected);
+        assert_eq!(result.0, expected);
+        assert_eq!(result.1, None);
     }
 
     #[test]
     pub fn lexes_string() {
         let input = "\"test\"".to_string();
+        let mut input = input.chars().peekable();
 
         let expected = LinkedList::from([TokenData {
             token: Token::Value(Value::String("test".to_string())),
@@ -569,14 +677,16 @@ mod lexer_tests {
             end_line: 0,
             end_col: 6
         }]);
-        let result = lex(input);
+        let result = lex(&mut input, 0, 0, 0);
 
-        assert_eq!(result.unwrap(), expected);
+        assert_eq!(result.0, expected);
+        assert_eq!(result.1, None);
     }
 
     #[test]
     pub fn lexes_positive_integer() {
         let input = "109".to_string();
+        let mut input = input.chars().peekable();
 
         let expected = LinkedList::from([TokenData {
             token: Token::Value(Value::Number(109.)),
@@ -588,14 +698,16 @@ mod lexer_tests {
             end_line: 0,
             end_col: 3
         }]);
-        let result = lex(input);
+        let result = lex(&mut input, 0, 0, 0);
 
-        assert_eq!(result.unwrap(), expected);
+        assert_eq!(result.0, expected);
+        assert_eq!(result.1, None);
     }
     
     #[test]
     pub fn lexes_positive_real_number() {
         let input = "109.55".to_string();
+        let mut input = input.chars().peekable();
 
         let expected = LinkedList::from([TokenData {
             token: Token::Value(Value::Number(109.55)),
@@ -607,13 +719,15 @@ mod lexer_tests {
             end_line: 0,
             end_col: 6
         }]);
-        let result = lex(input);
+        let result = lex(&mut input, 0, 0, 0);
 
-        assert_eq!(result.unwrap(), expected);
+        assert_eq!(result.0, expected);
+        assert_eq!(result.1, None);
     }
     #[test]
     pub fn lexes_positive_comma_separated_real_number() {
         let input = "62,109.55".to_string();
+        let mut input = input.chars().peekable();
 
         let expected = LinkedList::from([TokenData {
             token: Token::Value(Value::Number(62_109.55)),
@@ -625,14 +739,16 @@ mod lexer_tests {
             end_line: 0,
             end_col: 9
         }]);
-        let result = lex(input);
+        let result = lex(&mut input, 0, 0, 0);
 
-        assert_eq!(result.unwrap(), expected);
+        assert_eq!(result.0, expected);
+        assert_eq!(result.1, None);
     }
 
     #[test]
     pub fn lexes_open_parentheses() {
         let input = "(".to_string();
+        let mut input = input.chars().peekable();
 
         let expected = LinkedList::from([TokenData {
             token: Token::OpenParen,
@@ -644,14 +760,16 @@ mod lexer_tests {
             end_line: 0,
             end_col: 1
         }]);
-        let result = lex(input);
+        let result = lex(&mut input, 0, 0, 0);
 
-        assert_eq!(result.unwrap(), expected);
+        assert_eq!(result.0, expected);
+        assert_eq!(result.1, None);
     }
 
     #[test]
     pub fn lexes_close_parentheses() {
         let input = ")".to_string();
+        let mut input = input.chars().peekable();
 
         let expected = LinkedList::from([TokenData {
             token: Token::CloseParen,
@@ -663,14 +781,16 @@ mod lexer_tests {
             end_line: 0,
             end_col: 1
         }]);
-        let result = lex(input);
+        let result = lex(&mut input, 0, 0, 0);
 
-        assert_eq!(result.unwrap(), expected);
+        assert_eq!(result.0, expected);
+        assert_eq!(result.1, None);
     }
 
     #[test]
     pub fn lexes_comparison() {
         let input = "test = \"test\"".to_string();
+        let mut input = input.chars().peekable();
 
         let expected = LinkedList::from([
             TokenData {
@@ -704,14 +824,16 @@ mod lexer_tests {
                 end_col: 13
             },
         ]);
-        let result = lex(input);
+        let result = lex(&mut input, 0, 0, 0);
 
-        assert_eq!(result.unwrap(), expected);
+        assert_eq!(result.0, expected);
+        assert_eq!(result.1, None);
     }
 
     #[test]
     pub fn lexes_comparison_without_spaces() {
         let input = "test=\"test\"".to_string();
+        let mut input = input.chars().peekable();
 
         let expected = LinkedList::from([
             TokenData {
@@ -745,14 +867,16 @@ mod lexer_tests {
                 end_col: 11
             },
         ]);
-        let result = lex(input);
+        let result = lex(&mut input, 0, 0, 0);
 
-        assert_eq!(result.unwrap(), expected);
+        assert_eq!(result.0, expected);
+        assert_eq!(result.1, None);
     }
 
     #[test]
     pub fn lexes_comparison_with_newline() {
         let input = "test =\n10".to_string();
+        let mut input = input.chars().peekable();
 
         let expected = LinkedList::from([
             TokenData {
@@ -786,14 +910,16 @@ mod lexer_tests {
                 end_col: 2
             },
         ]);
-        let result = lex(input);
+        let result = lex(&mut input, 0, 0, 0);
 
-        assert_eq!(result.unwrap(), expected);
+        assert_eq!(result.0, expected);
+        assert_eq!(result.1, None);
     }
 
     #[test]
     pub fn lexes_joined_comparisons() {
         let input = "test = 10,000 | test_2  !=\"test_2\"".to_string();
+        let mut input = input.chars().peekable();
 
         let expected = LinkedList::from([
             TokenData {
@@ -867,14 +993,16 @@ mod lexer_tests {
                 end_col: 34
             },
         ]);
-        let result = lex(input);
+        let result = lex(&mut input, 0, 0, 0);
 
-        assert_eq!(result.unwrap(), expected);
+        assert_eq!(result.0, expected);
+        assert_eq!(result.1, None);
     }
 
     #[test]
     pub fn lexes_joined_comparisons_with_newline() {
         let input = "test = \"test\"\n| test_2  !=\"test_2\"".to_string();
+        let mut input = input.chars().peekable();
 
         let expected = LinkedList::from([
             TokenData {
@@ -948,35 +1076,222 @@ mod lexer_tests {
                 end_col: 20
             },
         ]);
-        let result = lex(input);
+        let result = lex(&mut input, 0, 0, 0);
 
-        assert_eq!(result.unwrap(), expected);
+        assert_eq!(result.0, expected);
+        assert_eq!(result.1, None);
     }
 
     #[test]
     pub fn errors_on_unexpected_character() {
-        let input = "test @ \"test\"".to_string();
-        
-        let result = lex(input);
+        let input = "@".to_string();
+        let mut input = input.chars().peekable();
 
-        assert!(result.is_err());
+        let result = lex(&mut input, 0, 0, 0);
+
+        assert_ne!(result.1, None);
+        let result = result.1.unwrap();
+        assert_eq!(result.start, 0);
+        assert_eq!(result.start_line, 0);
+        assert_eq!(result.start, 0);
+        assert_eq!(result.end, 1);
+    }
+
+    #[test]
+    pub fn errors_on_number_with_extra_decimal() {
+        let input = "100.00.0".to_string();
+        let mut input = input.chars().peekable();
+
+        let result = lex(&mut input, 0, 0, 0);
+
+        assert_ne!(result.1, None);
+    }
+    
+    #[test]
+    pub fn errors_on_negative_without_number() {
+        let input = "- |".to_string();
+        let mut input = input.chars().peekable();
+
+        let result = lex(&mut input, 0, 0, 0);
+
+        assert_ne!(result.1, None);
+    }
+    
+    #[test]
+    pub fn errors_on_decimal_without_number() {
+        let input = ". |".to_string();
+        let mut input = input.chars().peekable();
+
+        let result = lex(&mut input, 0, 0, 0);
+
+        assert_ne!(result.1, None);
     }
 
     #[test]
     pub fn errors_on_incomplete_not_equal() {
         let input = "test ! \"test\"".to_string();
-        
-        let result = lex(input);
+        let mut input = input.chars().peekable();
 
-        assert!(result.is_err());
+        let result = lex(&mut input, 0, 0, 0);
+
+        assert_ne!(result.1, None);
     }
 
     #[test]
     pub fn errors_on_incomplete_not_equal_2() {
         let input = "test !".to_string();
+        let mut input = input.chars().peekable();
         
-        let result = lex(input);
+        let result = lex(&mut input, 0, 0, 0);
 
-        assert!(result.is_err());
+        assert_ne!(result.1, None);
+    }
+
+    #[test]
+    pub fn unexpected_character_error_includes_right_metadata() {
+        let input = "test = 2.3 |\n test_2 @ 5".to_string();
+        let mut input = input.chars().peekable();
+
+        let result = lex(&mut input, 0, 0, 0);
+
+        assert_ne!(result.1, None);
+        let result = result.1.unwrap();
+        assert_eq!(result.start, 21);
+        assert_eq!(result.start_line, 1);
+        assert_eq!(result.start_col, 8);
+        assert_eq!(result.end, 22);
+        assert_eq!(result.end_line, 1);
+        assert_eq!(result.end_col, 9);
+    }
+
+    #[test]
+    pub fn number_with_extra_decimal_error_includes_right_metadata() {
+        let input = "test = 2.3 |\n test_2 > 100.00.0".to_string();
+        let mut input = input.chars().peekable();
+
+        let result = lex(&mut input, 0, 0, 0);
+
+        assert_ne!(result.1, None);
+        let result = result.1.unwrap();
+        assert_eq!(result.start, 23);
+        assert_eq!(result.start_line, 1);
+        assert_eq!(result.start_col, 10);
+        assert_eq!(result.end, 30);
+        assert_eq!(result.end_line, 1);
+        assert_eq!(result.end_col, 17);
+    }
+
+    #[test]
+    pub fn decimal_without_number_error_includes_right_metadata() {
+        let input = "test = 2.3 |\n test_2 > . |".to_string();
+        let mut input = input.chars().peekable();
+
+        let result = lex(&mut input, 0, 0, 0);
+
+        assert_ne!(result.1, None);
+        let result = result.1.unwrap();
+        assert_eq!(result.start, 23);
+        assert_eq!(result.start_line, 1);
+        assert_eq!(result.start_col, 10);
+        assert_eq!(result.end, 24);
+        assert_eq!(result.end_line, 1);
+        assert_eq!(result.end_col, 11);
+    }
+
+    #[test]
+    pub fn incomplete_not_equal_error_includes_right_metadata() {
+        let input = "test = 2.3 |\n test_2 ! \"test\"".to_string();
+        let mut input = input.chars().peekable();
+
+        let result = lex(&mut input, 0, 0, 0);
+
+        assert_ne!(result.1, None);
+        let result = result.1.unwrap();
+        assert_eq!(result.start, 21);
+        assert_eq!(result.start_line, 1);
+        assert_eq!(result.start_col, 8);
+        assert_eq!(result.end, 23);
+        assert_eq!(result.end_line, 1);
+        assert_eq!(result.end_col, 10);
+    }
+
+    #[test]
+    pub fn incomplete_not_equal_error_includes_right_metadata2() {
+        let input = "test = 2.3 |\n test_2 !".to_string();
+        let mut input = input.chars().peekable();
+
+        let result = lex(&mut input, 0, 0, 0);
+
+        assert_ne!(result.1, None);
+        let result = result.1.unwrap();
+        assert_eq!(result.start, 21);
+        assert_eq!(result.start_line, 1);
+        assert_eq!(result.start_col, 8);
+        assert_eq!(result.end, 22);
+        assert_eq!(result.end_line, 1);
+        assert_eq!(result.end_col, 9);
+    }
+
+    #[test]
+    pub fn errors_include_prior_lex_data() {
+        let input = "test = 2 | test_2 !".to_string();
+        let mut input = input.chars().peekable();
+
+        let expected = LinkedList::from([
+            TokenData {
+                token: Token::Name("test".to_string()),
+                source: "test".to_string(),
+                start: 0,
+                start_line: 0,
+                start_col: 0,
+                end: 4,
+                end_line: 0,
+                end_col: 4
+            },
+            TokenData {
+                token: Token::Comparator(Comparator::Equal),
+                source: "=".to_string(),
+                start: 5,
+                start_line: 0,
+                start_col: 5,
+                end: 6,
+                end_line: 0,
+                end_col: 6
+            },
+            TokenData {
+                token: Token::Value(Value::Number(2.)),
+                source: "2".to_string(),
+                start: 7,
+                start_line: 0,
+                start_col: 7,
+                end: 8,
+                end_line: 0,
+                end_col: 8
+            },
+            TokenData {
+                token: Token::JoinType(JoinType::Or),
+                source: "|".to_string(),
+                start: 9,
+                start_line: 0,
+                start_col: 9,
+                end: 10,
+                end_line: 0,
+                end_col: 10
+            },
+            TokenData {
+                token: Token::Name("test_2".to_string()),
+                source: "test_2".to_string(),
+                start: 11,
+                start_line: 0,
+                start_col: 11,
+                end: 17,
+                end_line: 0,
+                end_col: 17
+            }
+        ]);
+        let result = lex(&mut input, 0, 0, 0);
+
+        assert_eq!(result.0, expected);
+        assert_ne!(result.1, None);
     }
 }

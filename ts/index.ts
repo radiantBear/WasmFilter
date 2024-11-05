@@ -1,7 +1,6 @@
 import * as wasm from "../pkg";
-import { BareToken } from "../pkg";
-import { toResult } from "./result";
-import { saveCursorPosition, restoreCursorPosition } from "./cursor";
+import {BareToken} from "../pkg";
+import {restoreCursorPosition, saveCursorPosition} from "./cursor";
 
 document?.getElementById('filter-input-form')
     ?.addEventListener('submit', handleFilterSubmit);
@@ -69,6 +68,7 @@ function handleFilterKeydown(e: KeyboardEvent) {
 }
 
 function handleFilterInput(e: Event) {
+    const start = performance.now();
     e.preventDefault();
 
     const inputElement = document.getElementById('filter-input');
@@ -78,16 +78,15 @@ function handleFilterInput(e: Event) {
     const input = inputElement.textContent ?? '';
 
     // Tokenize input
-    const output = toResult(wasm.lex_filter, input);
+    const output = wasm.lex_filter(input);
 
-    if (!output.ok) {
+    if (output.errors.length) {
         // Display the error message to the user
         const filter_error = document.getElementById('filter-error');
         if (filter_error) {
-            filter_error.textContent = output.error;
+            filter_error.textContent = output.errors.map((err: wasm.FilterError) => err.message).join('\n');
             filter_error.classList.remove('d-none');
         }
-        return;
     }
     else {
         // Ensure no error message is present
@@ -101,7 +100,7 @@ function handleFilterInput(e: Event) {
     // Generate syntax-highlighted HTML
     const wrapper = document.createElement('span');
     let last_end = 0;
-    for (const token of output.value) {
+    for (const token of output.tokens) {
         let className = '';
         switch (token.token) {
             case BareToken.Name:
@@ -119,6 +118,9 @@ function handleFilterInput(e: Event) {
                 break;
             case BareToken.JoinType:
                 className = 'hl-join';
+                break;
+            case BareToken.Error:
+                className = 'hl-invalid';
                 break;
         }
 
@@ -140,4 +142,7 @@ function handleFilterInput(e: Event) {
     // Replace the input with the highlighted version
     inputElement.innerHTML = wrapper.innerHTML;
     restoreCursorPosition(inputElement, position);
+
+    const end = performance.now();
+    console.log(`Parsing took ${end - start} ms`);
 }
