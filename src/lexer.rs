@@ -74,6 +74,27 @@ impl TokenData {
 
         }
     }
+    
+    pub fn new(token: Token, source: String, start: usize, start_line: usize, start_col: usize, end: usize, end_line: usize, end_col: usize) -> Self {
+        Self {
+            token,
+            source,
+            start,
+            start_line,
+            start_col,
+            end,
+            end_line,
+            end_col
+        }
+    }
+    
+    pub fn new_oneline(token: Token, source: String, line: usize, start: usize, start_col: usize, end: usize, end_col: usize) -> Self {
+        Self::new(token, source, start, line, start_col, end, line, end_col)
+    }
+    
+    pub fn new_onechar(token: Token, source: String, line: usize, start: usize, start_col: usize) -> Self {
+        Self::new_oneline(token, source, line, start, start_col, start + 1, start_col + 1)
+    }
 }
 
 #[wasm_bindgen]
@@ -121,69 +142,14 @@ pub fn lex(mut s: &mut Peekable<Chars>, mut cursor: usize, mut line: usize, mut 
                     Err(error) => return (tokens, Some(error))
                 }
             },
-            '(' => tokens.push_back(TokenData{
-                token: Token::OpenParen,
-                source: "(".to_string(),
-                start: cursor,
-                start_line: line,
-                start_col: col,
-                end: cursor + 1,
-                end_line: line,
-                end_col: col + 1
-            }),
-            ')' => tokens.push_back(TokenData {
-                token: Token::CloseParen,
-                source: ")".to_string(),
-                start: cursor,
-                start_line: line,
-                start_col: col,
-                end: cursor + 1,
-                end_line: line,
-                end_col: col + 1
-            }),
-            '|' => tokens.push_back(TokenData {
-                token: Token::JoinType(JoinType::Or),
-                source: "|".to_string(),
-                start: cursor,
-                start_line: line,
-                start_col: col,
-                end: cursor + 1,
-                end_line: line,
-                end_col: col + 1
-            }),
-            '&' => tokens.push_back(TokenData {
-                token: Token::JoinType(JoinType::And),
-                source: "&".to_string(),
-                start: cursor,
-                start_line: line,
-                start_col: col,
-                end: cursor + 1,
-                end_line: line,
-                end_col: col + 1
-            }),
-            '^' => tokens.push_back(TokenData {
-                token: Token::JoinType(JoinType::Xor),
-                source: "^".to_string(),
-                start: cursor,
-                start_line: line,
-                start_col: col,
-                end: cursor + 1,
-                end_line: line,
-                end_col: col + 1
-            }),
+            '(' => tokens.push_back(TokenData::new_onechar(Token::OpenParen, "(".to_string(), line, cursor, col)),
+            ')' => tokens.push_back(TokenData::new_onechar(Token::CloseParen, ")".to_string(), line, cursor, col)),
+            '|' => tokens.push_back(TokenData::new_onechar(Token::JoinType(JoinType::Or), "|".to_string(), line, cursor, col)),
+            '&' => tokens.push_back(TokenData::new_onechar(Token::JoinType(JoinType::And), "&".to_string(), line, cursor, col)),
+            '^' => tokens.push_back(TokenData::new_onechar(Token::JoinType(JoinType::Xor), "^".to_string(), line, cursor, col)),
             '\n' => { line += 1; col = 0; cursor += 1; continue },
             c if c.is_whitespace() => { },
-            c @ _ => return (tokens, Some(FilterError {
-                message: format!("Unexpected character '{}'", c),
-                range_start: cursor,
-                range_end: cursor + 1,
-                start: cursor,
-                start_line: line,
-                start_col: col,
-                end: cursor + 1,
-                end_line: line,
-                end_col: col + 1,
-            }))
+            c @ _ => return (tokens, Some(FilterError::new_onechar(format!("Unexpected character '{}'", c), line, cursor, col)))
         }
 
         col += 1;
@@ -209,16 +175,7 @@ pub fn lex_name(c: char, s: &mut Peekable<Chars>, cursor: &mut usize, line: usiz
         *cursor += 1;
     }
 
-    TokenData {
-        source: name.clone(),
-        token: Token::Name(name),
-        start,
-        start_line: line,
-        start_col,
-        end: *cursor + 1,
-        end_line: line,
-        end_col: *col + 1
-    }
+    TokenData::new_oneline(Token::Name(name.clone()), name, line, start, start_col, *cursor + 1, *col + 1)
 }
 
 pub fn lex_string(s: &mut Peekable<Chars>, cursor: &mut usize, line: &mut usize, col: &mut usize) -> TokenData {
@@ -242,16 +199,7 @@ pub fn lex_string(s: &mut Peekable<Chars>, cursor: &mut usize, line: &mut usize,
         value.push(c);
     }
 
-    TokenData {
-        source: format!("\"{}\"", value),
-        token: Token::Value(Value::String(value)),
-        start,
-        start_line,
-        start_col,
-        end: *cursor + 1,
-        end_line: *line,
-        end_col: *col + 1
-    }
+    TokenData::new(Token::Value(Value::String(value.clone())), format!("\"{}\"", value), start, start_line, start_col, *cursor + 1, *line, *col + 1)
 }
 
 pub fn lex_number(c: char, s: &mut Peekable<Chars>, cursor: &mut usize, line: usize, col: &mut usize) -> Result<TokenData, FilterError> {
@@ -270,17 +218,7 @@ pub fn lex_number(c: char, s: &mut Peekable<Chars>, cursor: &mut usize, line: us
                 s.next();
                 *cursor += 1;
                 *col += 1;
-                return Err(FilterError {
-                    message: "Unexpected second decimal place".to_string(),
-                    range_start: *cursor,
-                    range_end: *cursor + 1,
-                    start,
-                    start_line: line,
-                    start_col,
-                    end: *cursor + 1,
-                    end_line: line,
-                    end_col: *col + 1
-                });
+                return Err(FilterError::new_oneline_context("Unexpected second decimal place".to_string(), line, *cursor, *cursor + 1, start, start_col, *cursor + 1, *col + 1));
             }
             else {
                 found_decimal = true;
@@ -298,42 +236,15 @@ pub fn lex_number(c: char, s: &mut Peekable<Chars>, cursor: &mut usize, line: us
     }
 
     if "-" == number_string.as_str() {
-        return Err(FilterError {
-            message: "Expected a number following `-`".to_string(),
-            range_start: start,
-            range_end: *cursor + 1,
-            start,
-            start_line: line,
-            start_col,
-            end: *cursor + 1,
-            end_line: line,
-            end_col: *col + 1
-        });
+        return Err(FilterError::new_oneline("Expected a number following `-`".to_string(), line, start, start_col, *cursor + 1, *col + 1));
     }
     if "." == number_string.as_str() {
-        return Err(FilterError {
-            message: "Expected a number with `.`".to_string(),
-            range_start: start,
-            range_end: *cursor + 1,
-            start,
-            start_line: line,
-            start_col,
-            end: *cursor + 1,
-            end_line: line,
-            end_col: *col + 1
-        });
+        return Err(FilterError::new_oneline("Expected a number with `.`".to_string(), line, start, start_col, *cursor + 1, *col + 1));
     }
 
-    Ok(TokenData {
-        source: raw_string,
-        token: Token::Value(Value::Number(number_string.parse::<f64>().unwrap())),
-        start,
-        start_line: line,
-        start_col,
-        end: *cursor + 1,
-        end_line: line,
-        end_col: *col + 1
-    })
+    Ok(
+        TokenData::new_oneline(Token::Value(Value::Number(number_string.parse::<f64>().unwrap())), raw_string, line, start, start_col, *cursor + 1, *col + 1) 
+    )
 }
 
 pub fn lex_comparator(c: char, s: &mut Peekable<Chars>, cursor: &mut usize, line: usize, col: &mut usize) -> Result<TokenData, FilterError> {
@@ -343,105 +254,43 @@ pub fn lex_comparator(c: char, s: &mut Peekable<Chars>, cursor: &mut usize, line
                 s.next();
                 *col += 1;
                 *cursor += 1;
-                Ok(TokenData {
-                    token: Token::Comparator(Comparator::GreaterThanOrEqual),
-                    source: ">=".to_string(),
-                    start: *cursor - 1,
-                    start_line: line,
-                    start_col: *col - 1,
-                    end: *cursor + 1,
-                    end_line: line,
-                    end_col: *col + 1
-                })
+                Ok(
+                    TokenData::new_oneline(Token::Comparator(Comparator::GreaterThanOrEqual), ">=".to_string(), line, *cursor - 1, *col - 1, *cursor + 1, *col + 1)
+                )
             },
-            _ => Ok(TokenData {
-                token: Token::Comparator(Comparator::GreaterThan),
-                source: ">".to_string(),
-                start: *cursor,
-                start_line: line,
-                start_col: *col,
-                end: *cursor + 1,
-                end_line: line,
-                end_col: *col + 1
-            })
+            _ => Ok(
+                TokenData::new_onechar(Token::Comparator(Comparator::GreaterThan), ">".to_string(), line, *cursor, *col)
+            )
         },
         '<' => match s.peek() {
             Some('=') => {
                 s.next();
                 *col += 1;
                 *cursor += 1;
-                Ok(TokenData {
-                    token: Token::Comparator(Comparator::LessThanOrEqual),
-                    source: "<=".to_string(),
-                    start: *cursor - 1,
-                    start_line: line,
-                    start_col: *col - 1,
-                    end: *cursor + 1,
-                    end_line: line,
-                    end_col: *col + 1
-                })
+                Ok(
+                    TokenData::new_oneline(Token::Comparator(Comparator::LessThanOrEqual), "<=".to_string(), line, *cursor - 1, *col - 1, *cursor + 1, *col + 1)
+                )
             },
-            _ => Ok(TokenData {
-                token: Token::Comparator(Comparator::LessThan),
-                source: "<".to_string(),
-                start: *cursor,
-                start_line: line,
-                start_col: *col,
-                end: *cursor + 1,
-                end_line: line,
-                end_col: *col + 1
-            })
+            _ => Ok(
+                TokenData::new_onechar(Token::Comparator(Comparator::LessThan), "<".to_string(), line, *cursor, *col)
+            )
         },
-        '=' => Ok(TokenData {
-            token: Token::Comparator(Comparator::Equal),
-            source: "=".to_string(),
-            start: *cursor,
-            start_line: line,
-            start_col: *col,
-            end: *cursor + 1,
-            end_line: line,
-            end_col: *col + 1
-        }),
+        '=' => Ok(
+            TokenData::new_onechar(Token::Comparator(Comparator::Equal), "=".to_string(), line, *cursor, *col)
+        ),
         '!' => match s.next() {
             Some('=') => {
                 *col += 1;
                 *cursor += 1;
-                Ok(TokenData {
-                    token: Token::Comparator(Comparator::NotEqual),
-                    source: "!=".to_string(),
-                    start: *cursor - 1,
-                    start_line: line,
-                    start_col: *col - 1,
-                    end: *cursor + 1,
-                    end_line: line,
-                    end_col: *col + 1
-                })
+                Ok(
+                    TokenData::new_oneline(Token::Comparator(Comparator::NotEqual), "!=".to_string(), line, *cursor - 1, *col - 1, *cursor + 1, *col + 1)
+                )
             },
-            None => Err(FilterError {
-                message: "Unexpected end of filter after '!'".to_string(),
-                range_start: *cursor,
-                range_end: *cursor + 1,
-                start: *cursor,
-                start_line: line,
-                start_col: *col,
-                end: *cursor + 1,
-                end_line: line,
-                end_col: *col + 1
-            }),
+            None => Err(FilterError::new_onechar("Unexpected end of filter after '!'".to_string(), line, *cursor, *col)),
             Some(c) => {
                 *col += 1;
                 *cursor += 1;
-                Err(FilterError {
-                    message: format!("Unexpected character '{}' (expected `=` to make `!=`)", c),
-                    range_start: *cursor - 1,
-                    range_end: *cursor + 1,
-                    start: *cursor - 1,
-                    start_line: line,
-                    start_col: *col - 1,
-                    end: *cursor + 1,
-                    end_line: line,
-                    end_col: *col + 1,
-                })
+                Err(FilterError::new_oneline(format!("Unexpected character '{}' (expected `=` to make `!=`)", c), line, *cursor - 1, *col - 1, *cursor + 1, *col + 1))
             }
         },
         _ => panic!("Passed invalid character `{}` to lex_comparator()", c)
