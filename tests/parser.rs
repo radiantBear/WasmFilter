@@ -10,15 +10,15 @@ fn parses_with_balanced_joins() {
         comparisons: LinkedList::from([
             ComparisonOrSearch::Search(Search {
                 comparisons: LinkedList::from([
-                    ComparisonOrSearch::Comparison(Comparison{ name: "test".to_string(), comparator: Comparator::Equal, value: Literal::String("test".to_string()) }),
-                    ComparisonOrSearch::Comparison(Comparison{ name: "test_2".to_string(), comparator: Comparator::Equal, value: Literal::String("test_2".to_string()) })
+                    ComparisonOrSearch::Comparison(Comparison{ name: "test".to_string(), comparator: Comparator::Equal, value: Value::String("test".to_string()) }),
+                    ComparisonOrSearch::Comparison(Comparison{ name: "test_2".to_string(), comparator: Comparator::Equal, value: Value::String("test_2".to_string()) })
                 ]),
                 join_type: JoinType::And
             }),
             ComparisonOrSearch::Search(Search {
                 comparisons: LinkedList::from([
-                    ComparisonOrSearch::Comparison(Comparison{ name: "test_3".to_string(), comparator: Comparator::Equal, value: Literal::String("test_3".to_string()) }),
-                    ComparisonOrSearch::Comparison(Comparison{ name: "test_4".to_string(), comparator: Comparator::Equal, value: Literal::String("test_4".to_string()) })
+                    ComparisonOrSearch::Comparison(Comparison{ name: "test_3".to_string(), comparator: Comparator::Equal, value: Value::String("test_3".to_string()) }),
+                    ComparisonOrSearch::Comparison(Comparison{ name: "test_4".to_string(), comparator: Comparator::Equal, value: Value::String("test_4".to_string()) })
                 ]),
                 join_type: JoinType::And
             })
@@ -26,7 +26,7 @@ fn parses_with_balanced_joins() {
         join_type: JoinType::Or
     };
     
-    let result = lex(input);
-    let result = parse(result).unwrap();
+    let result = lex(&mut input.chars().peekable(), 0, 0, 0);
+    let result = parse(result.0).unwrap();
     assert_eq!(result, expected_parse);
 }
